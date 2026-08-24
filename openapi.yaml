@@ -1,0 +1,263 @@
+openapi: 3.0.3
+info:
+  title: API de Items — Ejemplo didáctico (Programación 4)
+  description: |
+    API REST en PHP puro con CRUD para la entidad **Item** (`id`, `nombre`, `precio`).
+
+    Capas: **Controlador** → **Servicio** (validaciones y reglas de negocio) →
+    **Repositorio** (`ItemRepositoryInterface`) con dos implementaciones
+    intercambiables vía PDO + SQLite:
+    - `sqlite`: archivo persistente en `data/items.sqlite` (default)
+    - `memory`: base de datos en RAM (`sqlite::memory:`)
+
+    Para usar la implementación en memoria, iniciar el servidor así:
+    `$env:REPOSITORY_DRIVER='memory'; php -S localhost:8000 -t public`
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Servidor de desarrollo de PHP (php -S localhost:8000 -t public)
+
+# La API es pública: sin autenticación.
+security: []
+
+tags:
+  - name: Items
+    description: CRUD de la entidad Item
+
+paths:
+  /items:
+    get:
+      tags: [Items]
+      operationId: listarItems
+      summary: Listar todos los items
+      responses:
+        '200':
+          description: Lista completa de items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Item'
+              example:
+                - { id: 1, nombre: 'Teclado mecanico', precio: 25.5 }
+                - { id: 2, nombre: 'Mouse inalambrico', precio: 15.9 }
+                - { id: 3, nombre: 'Monitor 24"', precio: 189.99 }
+
+    post:
+      tags: [Items]
+      operationId: crearItem
+      summary: Crear un item
+      description: |
+        Valida los datos (nombre obligatorio de 1 a 100 caracteres, precio numérico >= 0)
+        y aplica la regla de negocio de nombre único (sin distinguir mayúsculas/minúsculas).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemInput'
+            example:
+              nombre: Lampara LED
+              precio: 12.5
+      responses:
+        '201':
+          description: Item creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                id: 4
+                nombre: Lampara LED
+                precio: 12.5
+        '422':
+          description: Datos inválidos o nombre duplicado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                camposInvalidos:
+                  summary: Varios campos inválidos
+                  value:
+                    error: La solicitud contiene datos inválidos.
+                    errors:
+                      nombre: ['El nombre es obligatorio.']
+                      precio: ['El precio no puede ser negativo.']
+                nombreDuplicado:
+                  summary: Regla de nombre único
+                  value:
+                    error: La solicitud contiene datos inválidos.
+                    errors:
+                      nombre: ["Ya existe un item con el nombre 'TECLADO MECANICO'."]
+                cuerpoNoJson:
+                  summary: Cuerpo no es JSON válido
+                  value:
+                    error: La solicitud contiene datos inválidos.
+                    errors:
+                      body: ['Se esperaba un objeto JSON válido.']
+
+  /items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+
+    get:
+      tags: [Items]
+      operationId: obtenerItem
+      summary: Obtener un item por id
+      responses:
+        '200':
+          description: Item encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                id: 1
+                nombre: Teclado mecanico
+                precio: 25.5
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: El id no es un entero positivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                error: La solicitud contiene datos inválidos.
+                errors:
+                  id: ['El identificador debe ser un entero positivo.']
+
+    put:
+      tags: [Items]
+      operationId: actualizarItem
+      summary: Reemplazar un item por id
+      description: 'Actualización completa (PUT): se envían nombre y precio.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemInput'
+            example:
+              nombre: Lampara LED RGB
+              precio: 19.99
+      responses:
+        '200':
+          description: Item actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+              example:
+                id: 4
+                nombre: Lampara LED RGB
+                precio: 19.99
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Datos inválidos o nombre usado por otro item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+    delete:
+      tags: [Items]
+      operationId: eliminarItem
+      summary: Eliminar un item por id
+      responses:
+        '204':
+          description: Eliminado (sin cuerpo)
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: El id no es un entero positivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+components:
+  parameters:
+    ItemId:
+      name: id
+      in: path
+      required: true
+      description: Identificador numérico del item
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+
+  responses:
+    NoEncontrado:
+      description: El item no existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+          example:
+            error: No existe el item con id 999.
+
+  schemas:
+    Item:
+      type: object
+      required: [id, nombre, precio]
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          maxLength: 100
+          example: Teclado mecanico
+        precio:
+          type: number
+          format: double
+          minimum: 0
+          example: 25.5
+
+    ItemInput:
+      type: object
+      required: [nombre, precio]
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Lampara LED
+        precio:
+          type: number
+          format: double
+          minimum: 0
+          example: 12.5
+
+    NotFoundError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: No existe el item con id 999.
+
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: La solicitud contiene datos inválidos.
+        errors:
+          type: object
+          description: Mapa campo => lista de mensajes de validación
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            nombre: ['El nombre es obligatorio.']
+            precio: ['El precio no puede ser negativo.']
