@@ -1,27 +1,35 @@
 # API de Items — Ejemplo didáctico (Programación 4)
 
-API REST en PHP puro (sin frameworks) con un CRUD completo para la entidad **Item**
-(`id`, `nombre`, `precio`). Su objetivo es demostrar, de forma mínima y legible,
-la separación de responsabilidades en capas y el uso de interfaces para desacoplar
-el almacenamiento.
+API REST en PHP puro (sin frameworks) con CRUD para la entidad **Item**
+(`id`, `nombre`, `precio`) y **autenticación por JWT** (`POST /login`).
+Su objetivo es demostrar, de forma mínima y legible, la separación de
+responsabilidades en capas, el uso de interfaces para desacoplar el
+almacenamiento y las buenas prácticas básicas de seguridad.
 
 ## Conceptos que demuestra
 
 | Concepto | Dónde mirar |
 |---|---|
 | Separación de responsabilidades: Controlador / Servicio / Repositorio | `src/Controllers`, `src/Services`, `src/Repositories` |
-| Validadores como lógica de negocio dentro del servicio | `src/Services/ItemService.php` (`validate()`) |
-| Interface para repositorios | `src/Repositories/ItemRepositoryInterface.php` |
-| PDO con SQLite en archivo (persistente) | `src/Repositories/SqliteItemRepository.php` |
-| PDO con SQLite en memoria (`sqlite::memory:`) | `src/Repositories/InMemoryItemRepository.php` |
+| Validadores como lógica de negocio dentro del servicio | `src/Services/ItemService.php`, `src/Services/AuthService.php` |
+| Interface para repositorios | `ItemRepositoryInterface.php`, `UserRepositoryInterface.php` |
+| PDO con SQLite en archivo (persistente) | `SqliteItemRepository.php`, `SqliteUserRepository.php` |
+| PDO con SQLite en memoria (`sqlite::memory:`) | `InMemoryItemRepository.php`, `InMemoryUserRepository.php` |
+| Autenticación con JWT (HS256 implementado a mano) | `src/Security/JwtService.php` |
+| Contraseñas hasheadas (bcrypt), nunca en texto plano | `password_hash()` al sembrar, `password_verify()` al loguear |
+| Autorización Bearer en el front controller | `public/index.php` (`requireBearerToken()`) |
 
 Cada capa tiene una única responsabilidad:
 
 ```
-HTTP  ->  public/index.php        Front controller: ruteo, composición de dependencias,
-          |                       manejo global de excepciones y respuesta JSON.
+HTTP  ->  public/index.php        Front controller: ruteo, composición,
+          |                       verificación del JWT Bearer y respuesta JSON.
           v
-          ItemController          Traduce HTTP <-> dominio (códigos 200/201/204).
+   [POST /login]  AuthController -> AuthService -> UserRepositoryInterface
+                                                  (verifica hash bcrypt, emite JWT)
+          v
+          ItemController          Traduce HTTP <-> dominio (200/201/204).
+                                  Solo se alcanza si el token es válido.
           v
           ItemService             Lógica de negocio: validaciones y reglas
                                   (campos obligatorios, precio >= 0, nombre único).
@@ -33,128 +41,167 @@ HTTP  ->  public/index.php        Front controller: ruteo, composición de depen
    (archivo)       (:memory:)           El resto del código no cambia.
 ```
 
-Punto clave: el servicio recibe por constructor **cualquier** implementación de la
-interface. Cambiar de base de datos se decide en un solo lugar
-(`public/index.php`), sin tocar controlador ni servicio.
+## Estructura
+
+```
+progra4_clase3/
+├── public/index.php                  Front controller (rutas + auth + composición)
+├── openapi.yaml                      Spec OpenAPI importable en Postman/Swagger
+├── data/items.sqlite                 BD SQLite (se crea sola al primer arranque)
+└── src/
+    ├── bootstrap.php                 Autoloader PSR-4 sin Composer
+    ├── Controllers/                  AuthController, ItemController
+    ├── Services/                     AuthService (login/JWT), ItemService (validadores)
+    ├── Repositories/                 Interfaces + implementaciones SQLite archivo/memoria
+    ├── Models/                       Item, User (el hash nunca sale en toArray())
+    ├── Security/JwtService.php       Emisión/verificación JWT HS256
+    ├── Exceptions/                   ApiException base -> 401, 404, 422
+    ├── Database/PdoFactory.php       Conexiones PDO uniformes
+    └── Http/JsonResponse.php         Respuesta JSON mínima
+```
 
 ## Requisitos
 
 - PHP >= 8.1 con la extensión `pdo_sqlite` (incluida por defecto en Windows).
 
 ```powershell
-php -v                 # verificar versión
+php -v                          # verificar versión
 php -m | Select-String sqlite   # verificar pdo_sqlite
 ```
 
-No se necesita Composer ni bases de datos instaladas: el archivo SQLite se crea solo
-en `data/items.sqlite` al primer arranque (con datos de ejemplo si está vacío).
+No se necesita Composer ni motor de BD instalado.
 
 ## Cómo iniciarlo
-
-Servidor de desarrollo de PHP desde la raíz del proyecto:
 
 ```powershell
 php -S localhost:8000 -t public
 ```
 
-Con repositorio **en memoria** (los datos se pierden al detener el servidor):
+Variables de entorno opcionales:
+
+| Variable | Valores | Default | Uso |
+|---|---|---|---|
+| `REPOSITORY_DRIVER` | `sqlite` \| `memory` | `sqlite` | Archivo persistente o BD en RAM |
+| `JWT_SECRET` | texto | solo desarrollo | Secreto de firma HMAC |
+| `JWT_TTL_SECONDS` | número | `3600` | Vigencia del token |
 
 ```powershell
-$env:REPOSITORY_DRIVER='memory'; php -S localhost:8000 -t public    # PowerShell
-REPOSITORY_DRIVER=memory php -S localhost:8000 -t public            # Linux/macOS
+# Ejemplo: memoria + secreto propio
+$env:REPOSITORY_DRIVER='memory'; $env:JWT_SECRET='mi-secreto'; php -S localhost:8000 -t public
 ```
-
-Valores posibles de `REPOSITORY_DRIVER`: `sqlite` (default) | `memory`.
 
 ## Endpoints
 
-| Método | Ruta           | Éxito | Errores |
-|--------|----------------|-------|---------|
-| GET    | `/items`       | 200 lista | — |
-| GET    | `/items/{id}`  | 200 item  | 404, 422 (id inválido) |
-| POST   | `/items`       | 201 creado | 422 (validación) |
-| PUT    | `/items/{id}`  | 200 actualizado | 404, 422 |
-| DELETE | `/items/{id}`  | 204 sin cuerpo | 404, 422 |
+| Método | Ruta | Auth | Éxito | Errores |
+|--------|------|------|-------|---------|
+| POST | `/login` | pública | 200 `{token, ...}` | 401, 422 |
+| GET | `/items` | Bearer JWT | 200 lista | 401 |
+| GET | `/items/{id}` | Bearer JWT | 200 item | 401, 404, 422 |
+| POST | `/items` | Bearer JWT | 201 creado | 401, 422 |
+| PUT | `/items/{id}` | Bearer JWT | 200 actualizado | 401, 404, 422 |
+| DELETE | `/items/{id}` | Bearer JWT | 204 sin cuerpo | 401, 404, 422 |
 
 ## Cómo testearlo
 
-Con el servidor corriendo, usar `curl` (o cualquier cliente REST). Ejemplos probados:
+### 1. Obtener token (credenciales sembradas: admin / 1234)
 
 ```powershell
-# Listar todos
-curl http://localhost:8000/items
-
-# Obtener uno
-curl http://localhost:8000/items/1
-
-# Crear  -> 201
-curl -X POST -H "Content-Type: application/json" `
-     -d '{"nombre":"Lampara LED","precio":12.5}' `
-     http://localhost:8000/items
-
-# Nombre duplicado -> 422
-curl -X POST -H "Content-Type: application/json" `
-     -d '{"nombre":"TECLADO MECANICO","precio":30}' `
-     http://localhost:8000/items
-
-# Datos inválidos (sin nombre, precio negativo) -> 422 con detalle por campo
-curl -X POST -H "Content-Type: application/json" `
-     -d '{"precio":-5}' `
-     http://localhost:8000/items
-
-# Actualizar -> 200
-curl -X PUT -H "Content-Type: application/json" `
-     -d '{"nombre":"Lampara LED RGB","precio":19.99}' `
-     http://localhost:8000/items/4
-
-# Inexistente -> 404
-curl -X PUT -H "Content-Type: application/json" `
-     -d '{"nombre":"X","precio":1}' `
-     http://localhost:8000/items/999
-
-# Eliminar -> 204 sin cuerpo
-curl -X DELETE http://localhost:8000/items/4
+$resp = curl.exe -s -X POST -H "Content-Type: application/json" `
+     -d '{"username":"admin","password":"1234"}' `
+     http://localhost:8000/login
+$resp                                        # ver la respuesta completa
+$token = ($resp | ConvertFrom-Json).token    # guardar el JWT
 ```
 
-Respuestas de error esperadas:
+Respuesta:
 
 ```json
-// 404
-{ "error": "No existe el item con id 999." }
-
-// 422 — los validadores del servicio acumulan TODOS los errores
 {
-    "error": "La solicitud contiene datos inválidos.",
-    "errors": {
-        "nombre": ["El nombre es obligatorio."],
-        "precio": ["El precio no puede ser negativo."]
-    }
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "token_type": "Bearer",
+    "expires_in": 3600,
+    "user": { "id": 1, "username": "admin" }
 }
 ```
 
-### Prueba rápida de que las implementaciones son intercambiables
+Casos de error: password incorrecta → **401** `{"error":"Credenciales inválidas."}`;
+falta un campo → **422** con detalle por campo.
 
-1. Con `REPOSITORY_DRIVER=sqlite` crear un item → detener el servidor → volver a
-   iniciar: el item sigue ahí (archivo `data/items.sqlite`).
-2. Con `REPOSITORY_DRIVER=memory` hacer lo mismo: cada arranque empieza con los 3
-   items de ejemplo, porque la BD vive solo en RAM.
-3. Ni el controlador ni el servicio cambiaron ni una línea.
-
-### Verificación manual sin servidor
-
-También puede validarse la lógica directamente por CLI:
+### 2. Consumir el CRUD enviando el token
 
 ```powershell
-php -r "require 'src/bootstrap.php'; var_dump(class_exists('App\Services\ItemService'));"
+# Listar
+curl.exe -H "Authorization: Bearer $token" http://localhost:8000/items
+
+# Crear -> 201
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
+     -d '{"nombre":"Lampara LED","precio":12.5}' `
+     http://localhost:8000/items
+
+# Actualizar -> 200
+curl.exe -X PUT -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
+     -d '{"nombre":"Lampara LED RGB","precio":19.99}' `
+     http://localhost:8000/items/4
+
+# Eliminar -> 204
+curl.exe -X DELETE -H "Authorization: Bearer $token" http://localhost:8000/items/4
 ```
+
+Sin token o con token inválido/expirado cualquier endpoint de items responde:
+
+```json
+// 401
+{ "error": "Falta el encabezado Authorization: Bearer <token>." }
+{ "error": "Token inválido o expirado." }
+```
+
+### 3. Probar con Postman
+
+Importar `openapi.yaml` (**Import** → arrastrar el archivo). La colección incluye
+la petición `iniciarSesion`; luego usar la pestaña **Authorization → Bearer Token**
+pegando el token devuelto.
+
+### 4. Demostraciones útiles para clase
+
+- **Intercambiabilidad**: crear un item con driver `sqlite`, reiniciar y ver que
+  persiste; repetir con `memory` y comprobar que cada arranque empieza limpio.
+  Ni controlador ni servicio cambian una línea.
+- **Hash en BD** (no hay texto plano):
+
+  ```powershell
+  php -r '$pdo = new PDO("sqlite:data/items.sqlite"); print_r($pdo->query("SELECT username, password_hash FROM users")->fetchAll());'
+  # password_hash => $2y$12$... (bcrypt)
+  ```
+
+- **Expiración**: `$env:JWT_TTL_SECONDS='1'`, loguearse, esperar 2 s y llamar a
+  `/items` → 401 `Token inválido o expirado.`
 
 ## Reglas de negocio (servicio)
 
-- `nombre`: obligatorio, texto, entre 1 y 100 caracteres, único (comparación sin
-  distinción de mayúsculas/minúsculas ASCII).
+Items:
+- `nombre`: obligatorio, texto, entre 1 y 100 caracteres, único (case-insensitive ASCII).
 - `precio`: obligatorio, numérico, mayor o igual que 0.
-- Operar sobre un `id` inexistente produce 404; sobre un `id` mal formado, 422.
+- `id` inexistente → 404; `id` mal formado → 422.
 
-> Nota: `lower()` de SQLite solo convierte a minúsculas caracteres ASCII; por eso
-> los datos sembrados evitan tildes ("mecanico", "inalambrico") y así la regla de
-> nombre único se comporta de forma predecible en ambas implementaciones.
+Autenticación:
+- `username` y `password` obligatorios (422 si faltan).
+- Credenciales incorrectas → 401 con mensaje genérico (no revela qué campo falló).
+
+## Seguridad aplicada
+
+- **Contraseñas**: se guardan como hash bcrypt (`password_hash(..., PASSWORD_BCRYPT)`),
+  nunca en texto plano; la comparación usa `password_verify()`.
+- **JWT firmado HS256**: cualquier alteración del token invalida la firma
+  (`hash_equals`, comparación en tiempo constante). Se valida también el `alg`
+  declarado en el header y la vigencia (`exp`).
+- **Secreto configurable**: `JWT_SECRET` por variable de entorno; el default es
+  solo para desarrollo.
+- El token viaja en el payload visible (no cifrado): no poner datos sensibles ahí;
+  la seguridad está en la firma.
+
+> Nota didáctica: `JwtService` está escrito a mano para mostrar cómo funciona un
+> JWT por dentro. En producción conviene una librería mantenida
+> (p. ej. `firebase/php-jwt`), además de refresh tokens y HTTPS.
+
+> Nota sobre `lower()` de SQLite: solo minúsculas ASCII; por eso los datos
+> sembrados evitan tildes ("mecanico") y así la regla de nombre único es predecible.

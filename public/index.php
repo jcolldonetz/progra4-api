@@ -7,27 +7,37 @@ declare(strict_types=1);
  *
  * Responsabilidades:
  *  1. Cargar el autoload (bootstrap).
- *  2. COMPOSICIÓN DE DEPENDENCIAS: elegir qué implementación del repositorio
- *     usar e inyectarla en el servicio (aquí es donde se intercambia SQLite
- *     por archivo <-> SQLite en memoria, sin tocar el resto del código).
+ *  2. COMPOSICIÓN DE DEPENDENCIAS: elegir qué implementación de los
+ *     repositorios usar e inyectarla en los servicios.
  *  3. Enrutar método HTTP + URL hacia el método del controlador.
- *  4. Convertir respuestas y excepciones en JSON con su código HTTP.
+ *  4. AUTORIZACIÓN: exigir un JWT válido (Bearer) para /items; /login es público.
+ *  5. Convertir respuestas y excepciones en JSON con su código HTTP.
  *
  * Ejecutar:
  *   php -S localhost:8000 -t public
  * Con repositorio en memoria:
  *   $env:REPOSITORY_DRIVER='memory'; php -S localhost:8000 -t public   (PowerShell)
- *   REPOSITORY_DRIVER=memory php -S localhost:8000 -t public           (Linux/macOS)
+ *
+ * Variables de entorno opcionales:
+ *   REPOSITORY_DRIVER   sqlite | memory      (default: sqlite)
+ *   JWT_SECRET          secreto de firma     (default solo para desarrollo)
+ *   JWT_TTL_SECONDS     vigencia del token   (default: 3600)
  */
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+use App\Controllers\AuthController;
 use App\Controllers\ItemController;
 use App\Exceptions\ApiException;
+use App\Exceptions\UnauthorizedException;
 use App\Exceptions\ValidationException;
 use App\Http\JsonResponse;
 use App\Repositories\InMemoryItemRepository;
+use App\Repositories\InMemoryUserRepository;
 use App\Repositories\SqliteItemRepository;
+use App\Repositories\SqliteUserRepository;
+use App\Security\JwtService;
+use App\Services\AuthService;
 use App\Services\ItemService;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -45,18 +55,50 @@ function jsonBody(): array
     return $data;
 }
 
+/**
+ * "Middleware" de AUTORIZACIÓN: valida el encabezado
+ *   Authorization: Bearer <jwt>
+ * Devuelve los claims del token o lanza 401 si falta, está alterado o expiró.
+ *
+ * @return array<string, mixed>
+ */
+function requireBearerToken(JwtService $jwt): array
+{
+    $header = trim($_SERVER['HTTP_AUTHORIZATION'] ?? '');
+
+    if (!preg_match('/^Bearer\s+(\S+)$/i', $header, $m)) {
+        throw new UnauthorizedException('Falta el encabezado Authorization: Bearer <token>.');
+    }
+
+    $claims = $jwt->verify($m[1]);
+    if ($claims === null) {
+        throw new UnauthorizedException('Token inválido o expirado.');
+    }
+
+    return $claims;
+}
+
 // ---------------------------------------------------------------------------
 // 1) Composición de dependencias (Composition Root)
 // ---------------------------------------------------------------------------
 $driver = strtolower(getenv('REPOSITORY_DRIVER') ?: 'sqlite');
+$dbFile = dirname(__DIR__) . '/data/items.sqlite';
 
-$repository = match ($driver) {
-    'sqlite' => new SqliteItemRepository(dirname(__DIR__) . '/data/items.sqlite'), // persistente
-    'memory' => new InMemoryItemRepository(),                                      // volátil
+[$itemRepository, $userRepository] = match ($driver) {
+    // Ambos repositorios comparten el mismo archivo SQLite (persistente)...
+    'sqlite' => [new SqliteItemRepository($dbFile), new SqliteUserRepository($dbFile)],
+    // ...o dos BD independientes en RAM (volátiles, se siembran en cada request).
+    'memory' => [new InMemoryItemRepository(), new InMemoryUserRepository()],
     default  => throw new RuntimeException("REPOSITORY_DRIVER inválido: '{$driver}' (use 'sqlite' o 'memory')."),
 };
 
-$controller = new ItemController(new ItemService($repository));
+$jwt = new JwtService(
+    getenv('JWT_SECRET') ?: 'secreto-solo-para-desarrollo-cambiar',
+    (int) (getenv('JWT_TTL_SECONDS') ?: 3600),
+);
+
+$authController = new AuthController(new AuthService($userRepository, $jwt));
+$itemController = new ItemController(new ItemService($itemRepository));
 
 // ---------------------------------------------------------------------------
 // 2) Enrutado mínimo: /items y /items/{id}
@@ -74,16 +116,32 @@ $id       = $segments[1] ?? null;
 $method   = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 try {
-    $response = match (true) {
-        $resource === 'items' && $method === 'GET'    && $id === null => $controller->index(),
-        $resource === 'items' && $method === 'POST'   && $id === null => $controller->store(jsonBody()),
-        $resource === 'items' && $method === 'GET'    && $id !== null => $controller->show($id),
-        $resource === 'items' && $method === 'PUT'    && $id !== null => $controller->update($id, jsonBody()),
-        $resource === 'items' && $method === 'DELETE' && $id !== null => $controller->destroy($id),
-        default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} " . ($_SERVER['REQUEST_URI'] ?? '')]),
-    };
+    // Ruta PÚBLICA: solo login.
+    if ($resource === 'login' && $method === 'POST' && $id === null) {
+        $response = $authController->login(jsonBody());
+    } elseif ($resource === 'items') {
+        // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401),
+        // antes de llegar al controlador. Los claims quedan disponibles.
+        $claims = requireBearerToken($jwt);
+        unset($claims); // el controlador actual no los necesita; podrían inyectarse
+
+        $response = match (true) {
+            $method === 'GET'    && $id === null => $itemController->index(),
+            $method === 'POST'   && $id === null => $itemController->store(jsonBody()),
+            $method === 'GET'    && $id !== null => $itemController->show($id),
+            $method === 'PUT'    && $id !== null => $itemController->update($id, jsonBody()),
+            $method === 'DELETE' && $id !== null => $itemController->destroy($id),
+            default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} /items" . ($id !== null ? "/{$id}" : '')]),
+        };
+    } else {
+        $response = new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} " . ($_SERVER['REQUEST_URI'] ?? '')]);
+    }
 } catch (ApiException $e) {
-    // Excepciones de negocio -> códigos HTTP previstos (404, 422).
+    // Excepciones de negocio -> códigos HTTP previstos (401, 404, 422).
+    if ($e->httpStatus() === 401) {
+        header('WWW-Authenticate: Bearer realm="api-items"');
+    }
+
     $payload = ['error' => $e->getMessage()];
     if ($e instanceof ValidationException) {
         $payload['errors'] = $e->getErrors();

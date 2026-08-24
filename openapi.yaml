@@ -12,6 +12,11 @@ info:
 
     Para usar la implementación en memoria, iniciar el servidor así:
     `$env:REPOSITORY_DRIVER='memory'; php -S localhost:8000 -t public`
+
+    ## Autenticación JWT
+
+    1. Hacer `POST /login` con `{"username": "admin", "password": "1234"}` → devuelve un **JWT** firmado (HS256, vigencia 1 h). En la base de datos solo se guarda el hash bcrypt de la contraseña.
+    2. Enviar el encabezado `Authorization: Bearer <token>` en todos los endpoints de `/items`. Sin token válido se responde **401**.
   version: 1.0.0
   license:
     name: MIT
@@ -24,13 +29,63 @@ servers:
 security: []
 
 tags:
+  - name: Auth
+    description: Autenticación (pública)
   - name: Items
-    description: CRUD de la entidad Item
+    description: CRUD de la entidad Item (requiere JWT Bearer)
 
 paths:
+  /login:
+    post:
+      tags: [Auth]
+      operationId: iniciarSesion
+      summary: Autenticarse y obtener un JWT
+      security: []
+      description: |
+        Valida las credenciales contra la tabla `users` de la base de datos.
+        La contraseña se verifica contra su **hash bcrypt** (`password_verify`),
+        nunca contra texto plano. Devuelve un token HS256 con claims
+        `sub`, `username`, `iat` y `exp`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: admin
+              password: '1234'
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+              example:
+                error: Credenciales inválidas.
+        '422':
+          description: Faltan campos obligatorios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                error: La solicitud contiene datos inválidos.
+                errors:
+                  password: ['La contraseña es obligatoria.']
+
   /items:
     get:
       tags: [Items]
+      security:
+        - bearerAuth: []
       operationId: listarItems
       summary: Listar todos los items
       responses:
@@ -49,6 +104,8 @@ paths:
 
     post:
       tags: [Items]
+      security:
+        - bearerAuth: []
       operationId: crearItem
       summary: Crear un item
       description: |
@@ -107,6 +164,8 @@ paths:
 
     get:
       tags: [Items]
+      security:
+        - bearerAuth: []
       operationId: obtenerItem
       summary: Obtener un item por id
       responses:
@@ -135,6 +194,8 @@ paths:
 
     put:
       tags: [Items]
+      security:
+        - bearerAuth: []
       operationId: actualizarItem
       summary: Reemplazar un item por id
       description: 'Actualización completa (PUT): se envían nombre y precio.'
@@ -169,6 +230,8 @@ paths:
 
     delete:
       tags: [Items]
+      security:
+        - bearerAuth: []
       operationId: eliminarItem
       summary: Eliminar un item por id
       responses:
@@ -184,6 +247,13 @@ paths:
                 $ref: '#/components/schemas/ValidationError'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT emitido por POST /login. En Postman: pestaña Authorization -> Bearer Token.'
+
   parameters:
     ItemId:
       name: id
@@ -206,6 +276,43 @@ components:
             error: No existe el item con id 999.
 
   schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: admin
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          example: '1234'
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT firmado (HS256) para usar como Bearer token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhcGktaXRlbXMiLCJpYXQiOjE3ODc2MDc0MDgsImV4cCI6MTc4NzYxMTAwOCwic3ViIjoxLCJ1c2VybmFtZSI6ImFkbWluIn0.fxsAz_kdrep5QQwh9vX_KISrEbLYdE_r2qjGyLZzOII
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Vigencia del token en segundos
+          example: 3600
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            username:
+              type: string
+              example: admin
+
     Item:
       type: object
       required: [id, nombre, precio]
