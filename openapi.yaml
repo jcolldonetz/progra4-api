@@ -23,7 +23,9 @@ info:
 
 servers:
   - url: http://localhost:8000
-    description: Servidor de desarrollo de PHP (php -S localhost:8000 -t public)
+    description: Servidor HTTP (php -S localhost:8000 -t public)
+  - url: https://localhost:8443
+    description: Servidor HTTPS (serve-https.cmd — certificado autofirmado)
 
 # La API es pública: sin autenticación.
 security: []

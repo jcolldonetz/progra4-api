@@ -18,6 +18,7 @@ almacenamiento y las buenas prácticas básicas de seguridad.
 | Autenticación con JWT (HS256 implementado a mano) | `src/Security/JwtService.php` |
 | Contraseñas hasheadas (bcrypt), nunca en texto plano | `password_hash()` al sembrar, `password_verify()` al loguear |
 | Autorización Bearer en el front controller | `public/index.php` (`requireBearerToken()`) |
+| HTTPS local con proxy TLS en PHP puro | `https-proxy.php`, `serve-https.cmd` |
 
 Cada capa tiene una única responsabilidad:
 
@@ -47,6 +48,10 @@ HTTP  ->  public/index.php        Front controller: ruteo, composición,
 progra4_clase3/
 ├── public/index.php                  Front controller (rutas + auth + composición)
 ├── openapi.yaml                      Spec OpenAPI importable en Postman/Swagger
+├── https-proxy.php                   Proxy reverso TLS en PHP puro (levanta HTTPS)
+├── serve-https.cmd                   Arranca la API en https://localhost:8443
+├── make-cert.cmd                     Genera el certificado autofirmado (una vez)
+├── certs/                            Certificados generados por make-cert.cmd
 ├── data/items.sqlite                 BD SQLite (se crea sola al primer arranque)
 └── src/
     ├── bootstrap.php                 Autoloader PSR-4 sin Composer
@@ -77,6 +82,32 @@ No se necesita Composer ni motor de BD instalado.
 php -S localhost:8000 -t public
 ```
 
+### HTTPS (sin instalar nada)
+
+El servidor built-in de PHP en **Windows no soporta TLS** (el flag `--cert` arroja
+`Unsupported SSL request`). Esta demo incluye un **proxy reverso TLS en PHP puro**
+(`stream_socket_server` con contexto SSL) que descifra HTTPS y reenvía al worker HTTP:
+
+1. Generar un certificado autofirmado **una sola vez**:
+   ```
+   make-cert.cmd        → crea certs\server.crt y certs\server.key
+   ```
+2. Levantar la API por HTTPS:
+   ```
+   serve-https.cmd      → https://localhost:8443  (driver sqlite)
+   serve-https.cmd memory   → driver en memoria
+   serve-https.cmd sqlite 9000  → puerto custom
+   ```
+
+Esto arranca dos procesos: el worker del server PHP en `http://127.0.0.1:8080`
+(plano) y el proxy TLS en `https://localhost:8443`. El navegador/curl mostrarán
+una advertencia de "certificado no confiable" (es autofirmado); en pruebas se
+acepta, y `curl` usa `-k` (insecure). En producción se usaría Nginx/Caddy/Apache
+o un túnel con CA pública.
+
+> `make-cert.cmd` detecta `openssl.exe` del PATH o el de `C:\xampp\apache\bin`.
+> Solo escucha en `127.0.0.1`, por lo que no se expone a la red local.
+
 Variables de entorno opcionales:
 
 | Variable | Valores | Default | Uso |
@@ -88,6 +119,16 @@ Variables de entorno opcionales:
 ```powershell
 # Ejemplo: memoria + secreto propio
 $env:REPOSITORY_DRIVER='memory'; $env:JWT_SECRET='mi-secreto'; php -S localhost:8000 -t public
+```
+
+### Probar por HTTPS
+
+```powershell
+$resp = curl.exe -s -k -X POST -H "Content-Type: application/json" `
+     -d '{"username":"admin","password":"1234"}' `
+     https://localhost:8443/login
+$token = ($resp | ConvertFrom-Json).token
+curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
 ```
 
 ## Endpoints

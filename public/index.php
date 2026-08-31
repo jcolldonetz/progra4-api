@@ -42,6 +42,40 @@ use App\Services\ItemService;
 
 header('Content-Type: application/json; charset=utf-8');
 
+// ---------------------------------------------------------------------------
+// 0) Exigir canal seguro (HTTPS). Solo se sirven peticiones cifradas.
+//
+//    El worker (php -S) siempre recibe HTTP plano: directamente o reenviado por
+//    https-proxy.php. Para distinguir un reenvío legítimo del proxy de un
+//    acceso HTTP directo:
+//      - https-proxy.php inyecta el encabezado interno "X-Forwarded-Proto: https"
+//        y una firma "X-Internal-Secret" igual al secreto compartido.
+//      - Aquí se exigen AMBOS. El secreto (tomado de JWT_SECRET) no es visible
+//        para un cliente externo, así que un HTTP directo sin pasar por el
+//        proxy no puede forjarlo con éxito -> 403.
+// ---------------------------------------------------------------------------
+if (defined('INTERNAL_SECRET')) {
+    $forwardedProto = strtolower(trim($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $internalSecret = is_string($_SERVER['HTTP_X_INTERNAL_SECRET'] ?? null)
+        ? $_SERVER['HTTP_X_INTERNAL_SECRET']
+        : '';
+
+    $viaProxy = $forwardedProto === 'https' && hash_equals(INTERNAL_SECRET, $internalSecret);
+
+    if (!$viaProxy) {
+        http_response_code(403);
+        echo json_encode(
+            ['error' => 'Solo se permite HTTPS. Use https:// seguido del host y puerto del servidor.'],
+            JSON_UNESCAPED_UNICODE,
+        );
+        exit;
+    }
+}
+
+$internalSecretEnv = getenv('JWT_SECRET') ?: 'secreto-solo-para-desarrollo-cambiar';
+define('INTERNAL_SECRET', $internalSecretEnv);
+unset($internalSecretEnv);
+
 /** Decodifica el cuerpo JSON de la petición; lanza 422 si no es válido. */
 function jsonBody(): array
 {
