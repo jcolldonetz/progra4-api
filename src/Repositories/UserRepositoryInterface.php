@@ -15,4 +15,7 @@ interface UserRepositoryInterface
 {
     /** Devuelve el usuario cuyo username coincida exactamente, o null. */
     public function findByUsername(string $username): ?User;
+
+    /** Crea un nuevo usuario con el username y el hash de la contraseña. Devuelve el ID asignado. */
+    public function save(string $username, string $passwordHash): int;
 }

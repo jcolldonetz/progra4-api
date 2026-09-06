@@ -43,6 +43,40 @@ use App\Services\ItemService;
 header('Content-Type: application/json; charset=utf-8');
 
 // ---------------------------------------------------------------------------
+// 0a) CORS: el cliente web corre en un origen distinto al de la API (Vite).
+//
+//     BRECHA DE SEGURIDAD DE 'Access-Control-Allow-Origin: *':
+//     Con ese valor, CUALQUIER página que el usuario visite (incluidas las
+//     maliciosas) puede leer las respuestas de esta API. Si la sesión se guarda
+//     en localStorage (como hace el cliente React), un sitio ajeno con acceso al
+//     token podría hacer peticiones autenticadas en nombre del usuario.
+//
+//     Por eso esa línea queda COMENTADA y solo se refleja el origen HTTP si
+//     pertenece a la lista blanca de abajo (el dev server de Vite).
+// ---------------------------------------------------------------------------
+// header('Access-Control-Allow-Origin: *');
+
+$allowedOrigins = [
+    'http://localhost:5173', // servidor de desarrollo Vite
+    'http://127.0.0.1:5173',
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Vary: Origin');
+}
+
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Max-Age: 86400');
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+
+// ---------------------------------------------------------------------------
 // 0) Exigir canal seguro (HTTPS). Solo se sirven peticiones cifradas.
 //
 //    El worker (php -S) siempre recibe HTTP plano: directamente o reenviado por
@@ -150,9 +184,11 @@ $id       = $segments[1] ?? null;
 $method   = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 try {
-    // Ruta PÚBLICA: solo login.
+    // Rutas PÚBLICAS: login y registro.
     if ($resource === 'login' && $method === 'POST' && $id === null) {
         $response = $authController->login(jsonBody());
+    } elseif ($resource === 'register' && $method === 'POST' && $id === null) {
+        $response = $authController->register(jsonBody());
     } elseif ($resource === 'items') {
         // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401),
         // antes de llegar al controlador. Los claims quedan disponibles.

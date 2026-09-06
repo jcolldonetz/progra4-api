@@ -40,7 +40,13 @@ final class InMemoryUserRepository implements UserRepositoryInterface
         return $row === false ? null : new User((int) $row['id'], (string) $row['username'], (string) $row['password_hash']);
     }
 
-    // Mismo criterio que la versión persistente: solo el hash llega a la "BD".
+    public function save(string $username, string $passwordHash): int
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO users (username, password_hash) VALUES (:username, :password_hash)');
+        $stmt->execute([':username' => $username, ':password_hash' => $passwordHash]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
     private function seed(): void
     {
         $insert = $this->pdo->prepare('INSERT INTO users (username, password_hash) VALUES (:username, :password_hash)');

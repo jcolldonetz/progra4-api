@@ -49,12 +49,13 @@ final class SqliteUserRepository implements UserRepositoryInterface
         return $row === false ? null : new User((int) $row['id'], (string) $row['username'], (string) $row['password_hash']);
     }
 
-    /**
-     * Usuario de demostración (admin / 1234).
-     * El texto plano aparece UNA sola vez, aquí, porque no hay endpoint de
-     * registro en esta demo. En producción las contraseñas llegarían ya
-     * desde un formulario y solo su hash tocaría la base de datos.
-     */
+    public function save(string $username, string $passwordHash): int
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO users (username, password_hash) VALUES (:username, :password_hash)');
+        $stmt->execute([':username' => $username, ':password_hash' => $passwordHash]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
     private function seedIfEmpty(): void
     {
         $total = (int) $this->pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();

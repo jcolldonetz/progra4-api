@@ -28,6 +28,51 @@ final class AuthService
     }
 
     /**
+     * Registra un nuevo usuario y devuelve el JWT.
+     *
+     * @return array{token: string, token_type: string, expires_in: int, user: array}
+     */
+    public function register(array $data): array
+    {
+        $errors = [];
+
+        $username = isset($data['username']) && is_string($data['username']) ? trim($data['username']) : '';
+        if ($username === '') {
+            $errors['username'][] = 'El usuario es obligatorio.';
+        } elseif (strlen($username) < 3) {
+            $errors['username'][] = 'El usuario debe tener al menos 3 caracteres.';
+        } elseif (strlen($username) > 50) {
+            $errors['username'][] = 'El usuario no puede superar los 50 caracteres.';
+        }
+
+        if (!isset($data['password']) || !is_string($data['password']) || $data['password'] === '') {
+            $errors['password'][] = 'La contraseña es obligatoria.';
+        } elseif (strlen($data['password']) < 4) {
+            $errors['password'][] = 'La contraseña debe tener al menos 4 caracteres.';
+        }
+
+        if ($errors !== []) {
+            throw new ValidationException($errors);
+        }
+
+        if ($this->users->findByUsername($username) !== null) {
+            throw new ValidationException(['username' => ['El usuario ya está registrado.']]);
+        }
+
+        $id = $this->users->save($username, password_hash($data['password'], PASSWORD_BCRYPT));
+
+        return [
+            'token'      => $this->jwt->issue([
+                'sub'      => $id,
+                'username' => $username,
+            ]),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->jwt->ttlSeconds(),
+            'user'       => ['id' => $id, 'username' => $username],
+        ];
+    }
+
+    /**
      * @return array{token: string, token_type: string, expires_in: int, user: array}
      */
     public function login(array $data): array
