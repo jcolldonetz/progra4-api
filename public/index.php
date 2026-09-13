@@ -64,6 +64,7 @@ $allowedOrigins = [
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true');
     header('Vary: Origin');
 }
 
@@ -126,19 +127,35 @@ function jsonBody(): array
 /**
  * "Middleware" de AUTORIZACIÓN: valida el encabezado
  *   Authorization: Bearer <jwt>
+ * o, en su defecto, la cookie HttpOnly "access_token" que el navegador
+ * envía automáticamente con cada petición.
  * Devuelve los claims del token o lanza 401 si falta, está alterado o expiró.
  *
  * @return array<string, mixed>
  */
 function requireBearerToken(JwtService $jwt): array
 {
-    $header = trim($_SERVER['HTTP_AUTHORIZATION'] ?? '');
+    $token = null;
 
-    if (!preg_match('/^Bearer\s+(\S+)$/i', $header, $m)) {
-        throw new UnauthorizedException('Falta el encabezado Authorization: Bearer <token>.');
+    // 1) Token de autenticación de la cookie HttpOnly emitida por la API
+    //    (se envía sola con cada petición; JS no puede leerla).
+    if (isset($_COOKIE['access_token'])) {
+        $token = is_string($_COOKIE['access_token']) ? $_COOKIE['access_token'] : null;
     }
 
-    $claims = $jwt->verify($m[1]);
+    // 2) El Bearer tiene prioridad si viene presente (modos localStorage/cookie JS).
+    $header = trim($_SERVER['HTTP_AUTHORIZATION'] ?? '');
+    if (preg_match('/^Bearer\s+(\S+)$/i', $header, $m)) {
+        $token = $m[1];
+    }
+
+    if ($token === null) {
+        throw new UnauthorizedException(
+            'Falta el encabezado Authorization: Bearer <token> (o la cookie de sesión access_token).'
+        );
+    }
+
+    $claims = $jwt->verify($token);
     if ($claims === null) {
         throw new UnauthorizedException('Token inválido o expirado.');
     }
@@ -165,7 +182,11 @@ $jwt = new JwtService(
     (int) (getenv('JWT_TTL_SECONDS') ?: 3600),
 );
 
-$authController = new AuthController(new AuthService($userRepository, $jwt));
+$authController = new AuthController(
+    new AuthService($userRepository, $jwt),
+    $jwt,
+    $jwt->ttlSeconds(),
+);
 $itemController = new ItemController(new ItemService($itemRepository));
 
 // ---------------------------------------------------------------------------
@@ -184,11 +205,19 @@ $id       = $segments[1] ?? null;
 $method   = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 try {
-    // Rutas PÚBLICAS: login y registro.
+    // Rutas PÚBLICAS: login, registro y logout.
     if ($resource === 'login' && $method === 'POST' && $id === null) {
         $response = $authController->login(jsonBody());
     } elseif ($resource === 'register' && $method === 'POST' && $id === null) {
         $response = $authController->register(jsonBody());
+    } elseif ($resource === 'logout' && $method === 'POST' && $id === null) {
+        // Borra la cookie HttpOnly en el cliente (Max-Age=0). Idempotente.
+        header('Set-Cookie: access_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+        $response = new JsonResponse(204, null);
+    } elseif ($resource === 'me' && $method === 'GET' && $id === null) {
+        // Protegido: acepta Bearer o cookie. Restaura la sesión de la cookie.
+        $claims = requireBearerToken($jwt);
+        $response = $authController->me($claims);
     } elseif ($resource === 'items') {
         // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401),
         // antes de llegar al controlador. Los claims quedan disponibles.
