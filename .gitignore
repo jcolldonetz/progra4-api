@@ -1,0 +1,5 @@
+# Dependencias de Composer (solo desarrollo/tests)
+/vendor/
+
+# Caché de PHPUnit
+/.phpunit.cache/

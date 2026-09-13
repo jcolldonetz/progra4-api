@@ -228,6 +228,33 @@ Autenticación:
 - `username` y `password` obligatorios (422 si faltan).
 - Credenciales incorrectas → 401 con mensaje genérico (no revela qué campo falló).
 
+## Tests unitarios
+
+La API usa **PHPUnit 12** (solo dependencia de desarrollo, vía Composer) para
+probar las capas de servicios, seguridad, controladores, modelos y repositorios
+de memoria. Los tests de servicios y repositorios corren sobre
+`InMemoryItemRepository` / `InMemoryUserRepository` (SQLite en memoria), así que
+no tocan el archivo `data/items.sqlite`.
+
+```powershell
+composer install          # primera vez: descarga PHPUnit
+composer test             # o: php vendor/bin/phpunit
+```
+
+Los tests viven en `tests/` con el namespace `App\Tests\` y la configuración en
+`phpunit.xml`. Cubren:
+
+- **JwtService**: emisión/verificación, firma alterada, secreto distinto,
+  algoritmo no permitido, token expirado, formatos inválidos.
+- **AuthService**: login (válido, 401, campos faltantes), registro (duplicado,
+  validaciones), acumulación de errores 422.
+- **ItemService**: CRUD completo, reglas de negocio (nombre único
+  case-insensitive, precio >= 0, longitud máxima) y códigos 404/422.
+- **Controllers** (`ItemController`, `AuthController`): códigos HTTP (200/201/204),
+  datos de respuesta y traducción de excepciones.
+- **Modelos y repositorios en memoria**: serialización segura (sin
+  `password_hash` en `toArray()`) y contrato CRUD.
+
 ## Seguridad aplicada
 
 - **Contraseñas**: se guardan como hash bcrypt (`password_hash(..., PASSWORD_BCRYPT)`),
