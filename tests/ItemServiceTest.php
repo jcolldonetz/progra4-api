@@ -6,6 +6,7 @@ namespace App\Tests;
 
 use App\Exceptions\NotFoundException;
 use App\Exceptions\ValidationException;
+use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
 use App\Services\ItemService;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +18,7 @@ final class ItemServiceTest extends TestCase
     protected function setUp(): void
     {
         // Siembra tres items: "Teclado mecanico", "Mouse inalambrico", "Monitor 24\"".
-        $this->service = new ItemService(new InMemoryItemRepository());
+        $this->service = new ItemService(new InMemoryItemRepository(), new InMemoryCategoriaRepository());
     }
 
     public function testListAllDevuelveLosItemsSembrados(): void
@@ -26,7 +27,7 @@ final class ItemServiceTest extends TestCase
 
         $this->assertCount(3, $items);
         $this->assertSame('Teclado mecanico', $items[0]['nombre']);
-        $this->assertSame(['id', 'nombre', 'precio'], array_keys($items[0]));
+        $this->assertSame(['id', 'nombre', 'precio', 'categoria_id'], array_keys($items[0]));
     }
 
     public function testGetByIdDevuelveElItem(): void
@@ -189,6 +190,52 @@ final class ItemServiceTest extends TestCase
         $this->expectExceptionMessage('No existe el item con id 900.');
 
         $this->service->delete(900);
+    }
+
+    public function testCreateConCategoriaIdAsociaElItem(): void
+    {
+        // InMemoryCategoriaRepository siembra: 1=Informática, 2=Periféricos, 3=Oficina.
+        $created = $this->service->create(['nombre' => 'Webcam', 'precio' => 40.0, 'categoria_id' => 2]);
+
+        $this->assertSame(2, $created['categoria_id']);
+        $this->assertSame(2, $this->service->getById($created['id'])['categoria_id']);
+    }
+
+    public function testCreateSinCategoriaDejaCategoriaNula(): void
+    {
+        $created = $this->service->create(['nombre' => 'Cable HDMI', 'precio' => 8.5]);
+
+        $this->assertNull($created['categoria_id']);
+    }
+
+    public function testCreateCategoriaInexistenteLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->assertErrors(
+            fn () => $this->service->create(['nombre' => 'X', 'precio' => 1, 'categoria_id' => 999]),
+            'categoria_id'
+        );
+    }
+
+    public function testCreateCategoriaIdNoEnteroPositivoLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        foreach (['abc', '0', '-3'] as $bad) {
+            $this->assertErrors(
+                fn () => $this->service->create(['nombre' => 'X', 'precio' => 1, 'categoria_id' => $bad]),
+                'categoria_id'
+            );
+        }
+    }
+
+    public function testUpdateReasignaCategoria(): void
+    {
+        $updated = $this->service->update(1, ['nombre' => 'Teclado RGB', 'precio' => 45.9, 'categoria_id' => 1]);
+
+        $this->assertSame(1, $updated['categoria_id']);
+        $this->assertSame(1, $this->service->getById(1)['categoria_id']);
     }
 
     /** Fuerza la validación y exige que el campo aparezca en los errores. */

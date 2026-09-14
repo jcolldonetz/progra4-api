@@ -7,20 +7,24 @@ namespace App\Services;
 use App\Exceptions\NotFoundException;
 use App\Exceptions\ValidationException;
 use App\Models\Item;
+use App\Repositories\CategoriaRepositoryInterface;
 use App\Repositories\ItemRepositoryInterface;
 
 /*
  * Capa de SERVICIO: concentra la LÓGICA DE NEGOCIO del caso de uso "items".
  *
- * - Depende de la INTERFACE ItemRepositoryInterface, no de una implementación
- *   concreta (inversión de dependencias).
- * - Aquí viven los VALIDADORES y las reglas de negocio (p. ej. nombre único,
- *   precio no negativo). El repositorio solo guarda/recupera datos.
+ * - Depende de las INTERFACES ItemRepositoryInterface y
+ *   CategoriaRepositoryInterface, no de implementaciones concretas.
+ * - Aquí viven los VALIDADORES y las reglas de negocio (nombre único,
+ *   precio no negativo, la categoria debe existir). El repositorio solo
+ *   guarda/recupera datos.
  */
 final class ItemService
 {
-    public function __construct(private readonly ItemRepositoryInterface $repository)
-    {
+    public function __construct(
+        private readonly ItemRepositoryInterface $repository,
+        private readonly CategoriaRepositoryInterface $categorias,
+    ) {
     }
 
     /** GET /items -> lista completa. */
@@ -38,17 +42,17 @@ final class ItemService
     /** POST /items -> valida, aplica reglas y crea. */
     public function create(array $data): array
     {
-        [$nombre, $precio] = $this->validate($data);
+        [$nombre, $precio, $categoriaId] = $this->validate($data);
         $this->assertNameAvailable($nombre);
 
-        return $this->repository->create(new Item(null, $nombre, $precio))->toArray();
+        return $this->repository->create(new Item(null, $nombre, $precio, $categoriaId))->toArray();
     }
 
     /** PUT /items/{id} -> 404 si no existe; valida; respeta regla de nombre único. */
     public function update(int $id, array $data): array
     {
         $this->requireItem($id);
-        [$nombre, $precio] = $this->validate($data);
+        [$nombre, $precio, $categoriaId] = $this->validate($data);
 
         $other = $this->repository->findByName($nombre);
         if ($other !== null && $other->getId() !== $id) {
@@ -57,7 +61,7 @@ final class ItemService
             ]);
         }
 
-        return $this->repository->update(new Item($id, $nombre, $precio))->toArray();
+        return $this->repository->update(new Item($id, $nombre, $precio, $categoriaId))->toArray();
     }
 
     /** DELETE /items/{id} -> 404 si no existía. */
@@ -94,17 +98,22 @@ final class ItemService
     }
 
     /**
-     * Valida "nombre" y "precio"; devuelve los valores normalizados.
+     * Valida "nombre", "precio" y "categoria_id"; devuelve los valores
+     * normalizados. CAVEAT de diseño: la validación de la FK se apoya en el
+     * repositorio de categorias (consulta extra por cada create/update) para
+     * que el error sea 422 y no un constraint SQL.
      *
      * Reglas:
      *  - nombre: obligatorio, texto recortado, entre 1 y 100 caracteres.
      *  - precio: obligatorio, numérico, mayor o igual que cero.
+     *  - categoria_id: OPCIONAL; si viene, entero positivo y debe existir.
      *
-     * @return array{0: string, 1: float} [nombre, precio]
+     * @return array{0: string, 1: float, 2: ?int} [nombre, precio, categoria_id]
      */
     private function validate(array $data): array
     {
         $errors = [];
+        $categoriaId = null;
 
         if (!array_key_exists('nombre', $data)) {
             $errors['nombre'][] = 'El nombre es obligatorio.';
@@ -127,10 +136,22 @@ final class ItemService
             $errors['precio'][] = 'El precio no puede ser negativo.';
         }
 
+        if (array_key_exists('categoria_id', $data) && $data['categoria_id'] !== null) {
+            $raw = $data['categoria_id'];
+            $candidato = filter_var($raw, FILTER_VALIDATE_INT);
+            if ($candidato === false || (int) $candidato < 1) {
+                $errors['categoria_id'][] = 'La categoria debe ser un entero positivo o null.';
+            } elseif ($this->categorias->findById((int) $candidato) === null) {
+                $errors['categoria_id'][] = 'La categoria indicada no existe.';
+            } else {
+                $categoriaId = (int) $candidato;
+            }
+        }
+
         if ($errors !== []) {
             throw new ValidationException($errors);
         }
 
-        return [trim((string) $data['nombre']), (float) $data['precio']];
+        return [trim((string) $data['nombre']), (float) $data['precio'], $categoriaId];
     }
 }

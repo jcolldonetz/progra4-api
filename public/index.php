@@ -27,17 +27,21 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use App\Controllers\AuthController;
+use App\Controllers\CategoriaController;
 use App\Controllers\ItemController;
 use App\Exceptions\ApiException;
 use App\Exceptions\UnauthorizedException;
 use App\Exceptions\ValidationException;
 use App\Http\JsonResponse;
+use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
 use App\Repositories\InMemoryUserRepository;
+use App\Repositories\SqliteCategoriaRepository;
 use App\Repositories\SqliteItemRepository;
 use App\Repositories\SqliteUserRepository;
 use App\Security\JwtService;
 use App\Services\AuthService;
+use App\Services\CategoriaService;
 use App\Services\ItemService;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -152,11 +156,9 @@ function requireBearerToken(JwtService $jwt): array
 $driver = strtolower(getenv('REPOSITORY_DRIVER') ?: 'sqlite');
 $dbFile = dirname(__DIR__) . '/data/items.sqlite';
 
-[$itemRepository, $userRepository] = match ($driver) {
-    // Ambos repositorios comparten el mismo archivo SQLite (persistente)...
-    'sqlite' => [new SqliteItemRepository($dbFile), new SqliteUserRepository($dbFile)],
-    // ...o dos BD independientes en RAM (volátiles, se siembran en cada request).
-    'memory' => [new InMemoryItemRepository(), new InMemoryUserRepository()],
+[$itemRepository, $userRepository, $categoriaRepository] = match ($driver) {
+    'sqlite' => [new SqliteItemRepository($dbFile), new SqliteUserRepository($dbFile), new SqliteCategoriaRepository($dbFile)],
+    'memory' => [new InMemoryItemRepository(), new InMemoryUserRepository(), new InMemoryCategoriaRepository()],
     default  => throw new RuntimeException("REPOSITORY_DRIVER inválido: '{$driver}' (use 'sqlite' o 'memory')."),
 };
 
@@ -165,8 +167,9 @@ $jwt = new JwtService(
     (int) (getenv('JWT_TTL_SECONDS') ?: 3600),
 );
 
-$authController = new AuthController(new AuthService($userRepository, $jwt));
-$itemController = new ItemController(new ItemService($itemRepository));
+$authController     = new AuthController(new AuthService($userRepository, $jwt));
+$itemController     = new ItemController(new ItemService($itemRepository, $categoriaRepository));
+$categoriaController = new CategoriaController(new CategoriaService($categoriaRepository, $itemRepository));
 
 // ---------------------------------------------------------------------------
 // 2) Enrutado mínimo: /items y /items/{id}
@@ -181,6 +184,7 @@ if (($segments[0] ?? '') === 'public') {
 
 $resource = $segments[0] ?? '';
 $id       = $segments[1] ?? null;
+$sub      = $segments[2] ?? null;
 $method   = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 try {
@@ -189,6 +193,20 @@ try {
         $response = $authController->login(jsonBody());
     } elseif ($resource === 'register' && $method === 'POST' && $id === null) {
         $response = $authController->register(jsonBody());
+    } elseif ($resource === 'categorias') {
+        // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401),
+        $claims = requireBearerToken($jwt);
+        unset($claims);
+
+        $response = match (true) {
+            $method === 'GET'    && $id === null && $sub === null => $categoriaController->index(),
+            $method === 'POST'   && $id === null && $sub === null => $categoriaController->store(jsonBody()),
+            $method === 'GET'    && $id !== null && $sub === null => $categoriaController->show($id),
+            $method === 'GET'    && $id !== null && $sub === 'items' => $categoriaController->items($id),
+            $method === 'PUT'    && $id !== null && $sub === null => $categoriaController->update($id, jsonBody()),
+            $method === 'DELETE' && $id !== null && $sub === null => $categoriaController->destroy($id),
+            default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} /categorias" . ($id !== null ? "/{$id}" : '') . ($sub !== null ? "/{$sub}" : '')]),
+        };
     } elseif ($resource === 'items') {
         // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401),
         // antes de llegar al controlador. Los claims quedan disponibles.

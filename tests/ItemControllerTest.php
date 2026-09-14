@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\Controllers\ItemController;
 use App\Exceptions\NotFoundException;
 use App\Exceptions\ValidationException;
+use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
 use App\Services\ItemService;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +18,7 @@ final class ItemControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->controller = new ItemController(new ItemService(new InMemoryItemRepository()));
+        $this->controller = new ItemController(new ItemService(new InMemoryItemRepository(), new InMemoryCategoriaRepository()));
     }
 
     public function testIndexDevuelve200ConLaLista(): void

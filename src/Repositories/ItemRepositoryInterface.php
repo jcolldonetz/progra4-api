@@ -24,6 +24,12 @@ interface ItemRepositoryInterface
     /** Devuelve el item con ese nombre (ignorando mayúsculas) o null. */
     public function findByName(string $nombre): ?Item;
 
+    /** @return Item[] los items de la categoria indicada (relación 1:N). */
+    public function findByCategoria(int $categoriaId): array;
+
+    /** Cantidad de items que pertenecen a la categoria indicada. */
+    public function countByCategoria(int $categoriaId): int;
+
     /** Inserta el item y devuelve una NUEVA instancia con el id asignado. */
     public function create(Item $item): Item;
 

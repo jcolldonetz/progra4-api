@@ -1,7 +1,9 @@
 # API de Items — Ejemplo didáctico (Programación 4)
 
-API REST en PHP puro (sin frameworks) con CRUD para la entidad **Item**
-(`id`, `nombre`, `precio`) y **autenticación por JWT** (`POST /login`).
+API REST en PHP puro (sin frameworks) con CRUD para las entidades **Item**
+(`id`, `nombre`, `precio`, `categoria_id`) y **Categoria** (`id`, `nombre`),
+relacionadas **1:N** (cada item pertenece a una categoría opcional). Incluye
+**autenticación por JWT** (`POST /login`).
 Su objetivo es demostrar, de forma mínima y legible, la separación de
 responsabilidades en capas, el uso de interfaces para desacoplar el
 almacenamiento y las buenas prácticas básicas de seguridad.
@@ -12,8 +14,9 @@ almacenamiento y las buenas prácticas básicas de seguridad.
 |---|---|
 | Separación de responsabilidades: Controlador / Servicio / Repositorio | `src/Controllers`, `src/Services`, `src/Repositories` |
 | Validadores como lógica de negocio dentro del servicio | `src/Services/ItemService.php`, `src/Services/AuthService.php` |
-| Interface para repositorios | `ItemRepositoryInterface.php`, `UserRepositoryInterface.php` |
-| PDO con SQLite en archivo (persistente) | `SqliteItemRepository.php`, `SqliteUserRepository.php` |
+| Interface para repositorios | `ItemRepositoryInterface.php`, `CategoriaRepositoryInterface.php`, `UserRepositoryInterface.php` |
+| Relación 1:N (Item ↔ Categoria) | `ItemService` valida `categoria_id`; `CategoriaService` adjunta `items_count` y bloquea delete si tiene items |
+| PDO con SQLite en archivo (persistente) | `SqliteItemRepository.php`, `SqliteCategoriaRepository.php`, `SqliteUserRepository.php` |
 | PDO con SQLite en memoria (`sqlite::memory:`) | `InMemoryItemRepository.php`, `InMemoryUserRepository.php` |
 | Autenticación con JWT (HS256 implementado a mano) | `src/Security/JwtService.php` |
 | Contraseñas hasheadas (bcrypt), nunca en texto plano | `password_hash()` al sembrar, `password_verify()` al loguear |
@@ -48,6 +51,7 @@ HTTP  ->  public/index.php        Front controller: ruteo, composición,
 progra4_clase3/
 ├── public/index.php                  Front controller (rutas + auth + composición)
 ├── openapi.yaml                      Spec OpenAPI importable en Postman/Swagger
+├── seed_items.php                    Seeder de items de demostración (ver abajo)
 ├── https-proxy.php                   Proxy reverso TLS en PHP puro (levanta HTTPS)
 ├── serve-https.cmd                   Arranca la API en https://localhost:8443
 ├── make-cert.cmd                     Genera el certificado autofirmado (una vez)
@@ -131,6 +135,39 @@ $token = ($resp | ConvertFrom-Json).token
 curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
 ```
 
+## Seeder de datos de demostración
+
+`seed_items.php` puebla la tabla `items` con productos de informática
+(Monitores, Auriculares, Mouses, Teclados, Impresoras, Toners, Cartuchos de
+Tinta y Notebooks), combinando categoría + marca + modelo. Genera nombres
+**únicos** (case-insensitive, como exige `ItemService`) y precios realistas por
+categoría.
+
+```powershell
+php seed_items.php               # 1000 items (por defecto)
+php seed_items.php 500           # 500 items
+php seed_items.php 12345 --reset # borra los existentes y crea 12 345
+```
+
+- **`cantidad`** (opcional): entero positivo; cuántos items insertar. Si el
+  catálogo no alcanza, se rellena con variaciones genéricas hasta completarlo.
+- **`--reset`** (opcional): vacía la tabla `items` antes de insertar. Sin este
+  flag, los items se **agregan** a los existentes.
+
+Uso típico en clase para mostrar que **la UI se vuelve lenta cuando la API
+devuelve toda la lista sin límite ni paginado**:
+
+```powershell
+php seed_items.php 1000 --reset
+php -S localhost:8000 -t public
+# ingresa en http://localhost:8000 (admin / 1234) y observa el panel:
+# GET /items responde 1000 filas y el frontend las renderiza todas de una vez.
+```
+
+> El seeder escribe directo en `data/items.sqlite` con PDO (sin pasar por el
+> servicio), así el insert es masivo y veloz. El repositorio solo siembra sus 3
+> ejemplos si la tabla está vacía, por lo que no interfiere con este script.
+
 ## Endpoints
 
 | Método | Ruta | Auth | Éxito | Errores |
@@ -141,6 +178,12 @@ curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
 | POST | `/items` | Bearer JWT | 201 creado | 401, 422 |
 | PUT | `/items/{id}` | Bearer JWT | 200 actualizado | 401, 404, 422 |
 | DELETE | `/items/{id}` | Bearer JWT | 204 sin cuerpo | 401, 404, 422 |
+| GET | `/categorias` | Bearer JWT | 200 lista (con `items_count`) | 401 |
+| GET | `/categorias/{id}` | Bearer JWT | 200 categoria | 401, 404, 422 |
+| GET | `/categorias/{id}/items` | Bearer JWT | 200 items de la categoria | 401, 404, 422 |
+| POST | `/categorias` | Bearer JWT | 201 creada | 401, 422 |
+| PUT | `/categorias/{id}` | Bearer JWT | 200 actualizada | 401, 404, 422 |
+| DELETE | `/categorias/{id}` | Bearer JWT | 204 sin cuerpo | 401, 404, **422 si tiene items** |
 
 ## Cómo testearlo
 

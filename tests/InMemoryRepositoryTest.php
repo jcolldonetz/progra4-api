@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests;
 
+use App\Models\Categoria;
 use App\Models\Item;
+use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
 use App\Repositories\InMemoryUserRepository;
 use PHPUnit\Framework\TestCase;
@@ -43,6 +45,20 @@ final class InMemoryRepositoryTest extends TestCase
 
         $this->assertSame(4, $created->getId());
         $this->assertCount(4, $repo->findAll());
+    }
+
+    public function testItemFindByCategoriaYCount(): void
+    {
+        $repo = new InMemoryItemRepository();
+
+        $repo->create(new Item(null, 'Monitor A', 100.0, 1));
+        $repo->create(new Item(null, 'Monitor B', 200.0, 1));
+        $repo->create(new Item(null, 'Teclado RGB', 50.0, 2));
+
+        $this->assertCount(2, $repo->findByCategoria(1));
+        $this->assertCount(1, $repo->findByCategoria(2));
+        $this->assertSame(0, $repo->countByCategoria(999));
+        $this->assertSame(2, $repo->countByCategoria(1));
     }
 
     public function testItemUpdatePersisteLosCambios(): void
@@ -84,5 +100,23 @@ final class InMemoryRepositoryTest extends TestCase
 
         $this->assertSame(2, $id);
         $this->assertSame('ana', $repo->findByUsername('ana')?->getUsername());
+    }
+
+    public function testCategoriaCrudBasico(): void
+    {
+        $repo = new InMemoryCategoriaRepository();
+
+        $this->assertCount(3, $repo->findAll());
+        $this->assertSame('Informática', $repo->findById(1)?->getNombre());
+        $this->assertNull($repo->findById(999));
+
+        $created = $repo->create(new Categoria(null, 'Redes'));
+        $this->assertSame(4, $created->getId());
+
+        $repo->update(new Categoria(4, 'Redes avanzadas'));
+        $this->assertSame('Redes avanzadas', $repo->findById(4)?->getNombre());
+
+        $this->assertTrue($repo->delete(4));
+        $this->assertFalse($repo->delete(4));
     }
 }
