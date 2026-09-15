@@ -164,25 +164,6 @@ function catalogo(): array
             ['Ricoh',   ['SP 150W', 'SP C260SFNw', 'SP C261SFNw', 'IM C300', 'IM C4000', 'MP 2554', 'MP C3003']],
         ],
 
-        'Toners' => [
-            ['HP',     ['CF226A (MFP M225)', 'CF228A (M402)', 'CF280A (P2055)', 'CF283A (M1536)', 'CF400A (Color MFP)', 'CF410A (Color LaserJet)', 'CE410A (Color)', 'CE505A (P2055)', 'CE390A (M601)', 'CF230A (MFP M232)', 'CF256A (MFP M283)', 'CF360A (MFP M281)', 'W1102A (M110)', 'W1370A (MFP M234)', 'CF259A (MFP M428)']],
-            ['Canon', ['051H (MF269)', '051 (MF269)', '055H (MF453)', '055 (MF453)', '124 (MF441)', '124H (MF441)', '125 (MF477)', '125H (MF477)']],
-            ['Brother', ['TN-2320 (HL-L2350)', 'TN-2380 (HL-L2370)', 'TN-830 (HL-L2310)', 'TN-2420 (HL-L2370DW)', 'TN-3480 (HL-L3220)', 'TN-2410 (HL-L2350DW)', 'TN-880 (MFC-L8390)', 'TN-3430 (HL-L3280)']],
-            ['Samsung', ['MLT-D111S (M2020)', 'MLT-D111L (M2070)', 'MLT-D1052 (M2885)', 'MLT-D205E (M2835)', 'MLT-K1612S (M2885FW)', 'CLT-P404C (CLP-365)']],
-            ['Lexmark', ['56F2H00 (MS421)', '56F2Z00 (MS421)', '56F2200 (MB2442)', '55F2H00 (B2236)', '55D2H00 (B2338)', '58D0H00 (MC3326)']],
-            ['Xerox',   ['006R04390 (B210)', '006R04388 (B215)', '006R04391 (C310)', '006R04393 (C400)', '106R03610 (Phaser 3330)', '106R03611 (Phaser 3330)']],
-            ['Kyocera', ['TK-120 (ECOSYS P2040)', 'TK-130 (ECOSYS P2235)', 'TK-5234 (ECOSYS P5026)', 'TK-5334 (ECOSYS M5526)']],
-            ['Ricoh',   ['SP 111 (SP 150W)', 'SP 310CE (SP C260)', 'SP 3610HA (IM C300)']],
-            ['Epson',   ['003 (EcoTank L3250)', '003 XL (EcoTank)', '012 (EcoTank L5290)', '012 XL (EcoTank)']],
-        ],
-
-        'Cartuchos de Tinta' => [
-            ['HP',     ['61 (Negro)', '61 (Color)', '61XL (Negro)', '65 (Negro)', '65 (Color)', '65XL (Negro)', '65XL (Color)', '67 (Negro)', '67 (Color)', '67XL (Negro)', '305 (Negro)', '305 (Color)', '305XL (Negro)', '952 (Negro)', '952XL (Color)', '951 (Negro)', '951 (Color)', '934XL (Negro)']],
-            ['Canon', ['PG-245', 'CL-246', 'PG-245XL', 'CL-246XL', 'PG-260', 'CL-261', 'PG-280', 'CL-281', 'PG-280XL', 'CL-281XL', 'PG-375', 'CL-376', 'CLI-281', 'PGI-280']],
-            ['Epson', ['112 (Negro)', '112 (Cyan)', '112 (Magenta)', '112 (Yellow)', '114 (Negro)', '114 (Color)', '212 (Negro)', '212 (Color)', '272 (Negro)', '272 (Color)', '401 (Negro)', '401 (Color)', '802 (Negro)', '802XL (Color)']],
-            ['Brother', ['LC3013 (Negro)', 'LC3013 (Cyan)', 'LC3013 (Magenta)', 'LC3013 (Yellow)', 'LC3017 (Negro)', 'LC3017 (Color)', 'LC401S (Negro)', 'LC401BK', 'LC404']],
-        ],
-
         'Notebooks' => [
             ['Dell',     ['Latitude 3440', 'Latitude 5540', 'Latitude 7440', 'Latitude 9440', 'Inspiron 15', 'Inspiron 14', 'Inspiron 16', 'XPS 13', 'XPS 13 Plus', 'XPS 15', 'XPS 16', 'Vostro 3520', 'Vostro 5430', 'G15 5530', 'Alienware m16', 'Alienware x14']],
             ['HP',       ['ProBook 450 G10', 'ProBook 440 G10', 'ProBook 650 G10', 'EliteBook 840 G10', 'EliteBook 860 G10', 'Pavilion 15', 'Pavilion 14', 'Envy x360 15', 'Envy 16', 'Spectre x360 16', 'Victus 15', 'Omen 16', 'Omen 17', 'Chromebook 14']],
@@ -307,8 +288,6 @@ function generarPrecio(string $categoria): float
         'Mouses'              => [5.00,  100.00],
         'Teclados'            => [8.00,  200.00],
         'Impresoras'          => [50.00, 800.00],
-        'Toners'              => [20.00, 150.00],
-        'Cartuchos de Tinta'  => [15.00, 80.00],
         'Notebooks'           => [300.00, 2000.00],
     ];
 
