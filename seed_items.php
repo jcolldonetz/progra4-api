@@ -8,12 +8,13 @@
  *   cantidad   cuántos items crear (por defecto 1000). Debe ser un entero
  *              positivo; no se crean nombres de más, así que si el catálogo
  *              no alcanza, se rellena con variaciones genéricas.
- *   --reset    borra los existentes antes de insertar.
+ *   --reset    borra los items y las categorías existentes y las vuelve a
+ *              crear desde cero (evita duplicados de ejecuciones previas).
  *
  * Ejemplos:
  *   php seed_items.php               -> 1000 items
  *   php seed_items.php 500           -> 500 items
- *   php seed_items.php 500 --reset   -> borra y crea 500 items
+ *   php seed_items.php 500 --reset   -> borra y crea 500 items (y 8 categorías)
  *
  * El script también crea la tabla categorias con las 8 categorías del
  * catálogo y asocia cada item a la suya (relación 1:N hacia la columna
@@ -66,9 +67,14 @@ if (!$hasCategoriaId) {
 }
 
 // -- Limpiar solo si se pide --reset --
+// Se vacían items y categorias para volver a sembrar desde cero; así se
+// evita acumular categorías duplicadas entre ejecuciones. Se borra primero
+// items (dependiente de la FK) y luego se resetea el AUTOINCREMENT.
 if ($reset) {
     $pdo->exec('DELETE FROM items');
-    echo "Tabla items vaciada.\n";
+    $pdo->exec('DELETE FROM categorias');
+    $pdo->exec("DELETE FROM sqlite_sequence WHERE name IN ('items', 'categorias')");
+    echo "Tablas items y categorias vaciadas.\n";
 }
 
 // =========================================================================
