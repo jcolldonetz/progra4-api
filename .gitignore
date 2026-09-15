@@ -3,3 +3,6 @@
 
 # Caché de PHPUnit
 /.phpunit.cache/
+
+# Databases SQLite
+*.sqlite
