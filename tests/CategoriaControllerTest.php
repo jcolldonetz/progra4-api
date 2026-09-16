@@ -69,8 +69,9 @@ final class CategoriaControllerTest extends TestCase
         $response = $this->controller->items((string) $cat->data['id']);
 
         $this->assertSame(200, $response->status);
-        $this->assertCount(1, $response->data);
-        $this->assertSame('Monitor 27"', $response->data[0]['nombre']);
+        $this->assertCount(1, $response->data['data']);
+        $this->assertSame('Monitor 27"', $response->data['data'][0]['nombre']);
+        $this->assertSame(1, $response->data['meta']['total']);
     }
 
     public function testItemsDeCategoriaInexistenteLanza404(): void

@@ -54,6 +54,32 @@ final class CategoriaService
         );
     }
 
+    /** GET /categorias/{id}/items?page=&per_page= -> { data, meta } paginado. */
+    public function listItemsPaginated(int $id, int $page, int $perPage): array
+    {
+        $this->requireCategoria($id);
+
+        $total       = $this->items->countByCategoria($id);
+        $totalPages  = max(1, (int) ceil($total / $perPage));
+        $page        = min($page, $totalPages);
+
+        $offset = ($page - 1) * $perPage;
+        $items  = array_map(
+            static fn (Item $item): array => $item->toArray(),
+            $this->items->findPageByCategoria($id, $offset, $perPage),
+        );
+
+        return [
+            'data' => $items,
+            'meta' => [
+                'page'        => $page,
+                'per_page'    => $perPage,
+                'total'       => $total,
+                'total_pages' => $totalPages,
+            ],
+        ];
+    }
+
     /** POST /categorias -> valida, aplica reglas y crea. */
     public function create(array $data): array
     {

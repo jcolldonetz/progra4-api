@@ -73,6 +73,37 @@ final class SqliteItemRepository implements ItemRepositoryInterface
         return $row === false ? null : $this->hydrate($row);
     }
 
+    public function findPage(int $offset, int $limit): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id, nombre, precio, categoria_id FROM items ORDER BY id LIMIT :limit OFFSET :offset'
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map($this->hydrate(...), $stmt->fetchAll());
+    }
+
+    public function countAll(): int
+    {
+        return (int) $this->pdo->query('SELECT COUNT(*) FROM items')->fetchColumn();
+    }
+
+    public function findPageByCategoria(int $categoriaId, int $offset, int $limit): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id, nombre, precio, categoria_id FROM items
+             WHERE categoria_id = :categoria_id ORDER BY id LIMIT :limit OFFSET :offset'
+        );
+        $stmt->bindValue(':categoria_id', $categoriaId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map($this->hydrate(...), $stmt->fetchAll());
+    }
+
     public function findByCategoria(int $categoriaId): array
     {
         $stmt = $this->pdo->prepare(
