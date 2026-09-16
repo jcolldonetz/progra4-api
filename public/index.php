@@ -187,7 +187,45 @@ $id       = $segments[1] ?? null;
 $sub      = $segments[2] ?? null;
 $method   = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+/**
+ * Parsea los parámetros de paginación de la query string (page, per_page).
+ * Valores por defecto: page=1, per_page=10. Lanza 422 si vienen inválidos.
+ *
+ * @return array{0: int, 1: int} [page, per_page]
+ */
+function pagination(): array
+{
+    $errors = [];
+    $raw = static fn (string $key, string $default): string =>
+        isset($_GET[$key]) && $_GET[$key] !== ''
+            ? (string) $_GET[$key]
+            : $default;
+
+    $normalize = static function (string $value, string $key) use (&$errors): ?int {
+        $v = filter_var($value, FILTER_VALIDATE_INT);
+        if ($v === false || (int) $v < 1) {
+            $errors[$key][] = "El parámetro {$key} debe ser un entero positivo.";
+            return null;
+        }
+        return (int) $v;
+    };
+
+    $page = $normalize($raw('page', '1'), 'page') ?? 1;
+    $perPage = $normalize($raw('per_page', '10'), 'per_page') ?? 10;
+
+    if ($perPage > 100) {
+        $errors['per_page'][] = 'La cantidad por página no puede superar 100.';
+    }
+
+    if ($errors !== []) {
+        throw new ValidationException($errors);
+    }
+
+    return [$page, $perPage];
+}
+
 try {
+    [$page, $perPage] = pagination();
     // Rutas PÚBLICAS: login y registro.
     if ($resource === 'login' && $method === 'POST' && $id === null) {
         $response = $authController->login(jsonBody());
@@ -202,7 +240,7 @@ try {
             $method === 'GET'    && $id === null && $sub === null => $categoriaController->index(),
             $method === 'POST'   && $id === null && $sub === null => $categoriaController->store(jsonBody()),
             $method === 'GET'    && $id !== null && $sub === null => $categoriaController->show($id),
-            $method === 'GET'    && $id !== null && $sub === 'items' => $categoriaController->items($id),
+            $method === 'GET'    && $id !== null && $sub === 'items' => $categoriaController->items($id, $page, $perPage),
             $method === 'PUT'    && $id !== null && $sub === null => $categoriaController->update($id, jsonBody()),
             $method === 'DELETE' && $id !== null && $sub === null => $categoriaController->destroy($id),
             default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} /categorias" . ($id !== null ? "/{$id}" : '') . ($sub !== null ? "/{$sub}" : '')]),
@@ -214,7 +252,7 @@ try {
         unset($claims); // el controlador actual no los necesita; podrían inyectarse
 
         $response = match (true) {
-            $method === 'GET'    && $id === null => $itemController->index(),
+            $method === 'GET'    && $id === null => $itemController->index($page, $perPage),
             $method === 'POST'   && $id === null => $itemController->store(jsonBody()),
             $method === 'GET'    && $id !== null => $itemController->show($id),
             $method === 'PUT'    && $id !== null => $itemController->update($id, jsonBody()),

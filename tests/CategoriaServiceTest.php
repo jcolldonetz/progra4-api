@@ -73,6 +73,23 @@ final class CategoriaServiceTest extends TestCase
         $this->assertSame([], $this->service->listItems(3));
     }
 
+    public function testListItemsPaginatedDevuelveMeta(): void
+    {
+        $this->items->create(['nombre' => 'Teclado USB', 'precio' => 30.0, 'categoria_id' => 2]);
+        $this->items->create(['nombre' => 'Mouse Pad', 'precio' => 5.0, 'categoria_id' => 2]);
+
+        $result = $this->service->listItemsPaginated(2, 1, 1);
+
+        $this->assertCount(1, $result['data']);
+        $this->assertSame([
+            'page'        => 1,
+            'per_page'    => 1,
+            'total'       => 2,
+            'total_pages' => 2,
+        ], $result['meta']);
+        $this->assertSame('Teclado USB', $result['data'][0]['nombre']);
+    }
+
     public function testListItemsDeCategoriaInexistenteLanza404(): void
     {
         $this->expectException(NotFoundException::class);

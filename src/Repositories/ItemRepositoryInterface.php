@@ -18,6 +18,15 @@ interface ItemRepositoryInterface
     /** @return Item[] todos los items */
     public function findAll(): array;
 
+    /** Página de items ordenados por id (para listado paginado). */
+    public function findPage(int $offset, int $limit): array;
+
+    /** Total de items del repositorio (para el meta de paginación). */
+    public function countAll(): int;
+
+    /** Página de items de la categoria indicada (para listado paginado). */
+    public function findPageByCategoria(int $categoriaId, int $offset, int $limit): array;
+
     /** Devuelve el item con ese id o null si no existe. */
     public function findById(int $id): ?Item;
 

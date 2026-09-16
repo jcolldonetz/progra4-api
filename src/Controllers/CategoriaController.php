@@ -30,10 +30,10 @@ final class CategoriaController
         return new JsonResponse(200, $this->service->getById($this->parseId($id)));
     }
 
-    /** GET /categorias/{id}/items -> 200 con los items de la categoria. */
-    public function items(string $id): JsonResponse
+    /** GET /categorias/{id}/items?page=&per_page= -> 200 con { data, meta }. */
+    public function items(string $id, int $page = 1, int $perPage = 10): JsonResponse
     {
-        return new JsonResponse(200, $this->service->listItems($this->parseId($id)));
+        return new JsonResponse(200, $this->service->listItemsPaginated($this->parseId($id), $page, $perPage));
     }
 
     /** POST /categorias -> 201 con la categoria creada. */

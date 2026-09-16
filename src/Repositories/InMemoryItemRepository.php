@@ -66,6 +66,21 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
         return $row === false ? null : $this->hydrate($row);
     }
 
+    public function findPage(int $offset, int $limit): array
+    {
+        return array_values(array_slice($this->findAll(), $offset, $limit));
+    }
+
+    public function countAll(): int
+    {
+        return (int) $this->pdo->query('SELECT COUNT(*) FROM items')->fetchColumn();
+    }
+
+    public function findPageByCategoria(int $categoriaId, int $offset, int $limit): array
+    {
+        return array_values(array_slice($this->findByCategoria($categoriaId), $offset, $limit));
+    }
+
     public function findByCategoria(int $categoriaId): array
     {
         $stmt = $this->pdo->prepare(

@@ -30,6 +30,28 @@ final class ItemServiceTest extends TestCase
         $this->assertSame(['id', 'nombre', 'precio', 'categoria_id'], array_keys($items[0]));
     }
 
+    public function testListPaginatedDevuelveMetaYPrimeraPagina(): void
+    {
+        $result = $this->service->listPaginated(1, 2);
+
+        $this->assertCount(2, $result['data']);
+        $this->assertSame([
+            'page'        => 1,
+            'per_page'    => 2,
+            'total'       => 3,
+            'total_pages' => 2,
+        ], $result['meta']);
+        $this->assertSame('Teclado mecanico', $result['data'][0]['nombre']);
+    }
+
+    public function testListPaginatedPaginaFueraDeRangoSeRecorta(): void
+    {
+        $result = $this->service->listPaginated(99, 2);
+
+        $this->assertSame(2, $result['meta']['page']);
+        $this->assertCount(1, $result['data']);
+    }
+
     public function testGetByIdDevuelveElItem(): void
     {
         $item = $this->service->getById(2);

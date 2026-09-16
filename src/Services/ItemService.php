@@ -33,6 +33,30 @@ final class ItemService
         return array_map(static fn (Item $item) => $item->toArray(), $this->repository->findAll());
     }
 
+    /** GET /items?page=&per_page= -> { data, meta } con paginación. */
+    public function listPaginated(int $page, int $perPage): array
+    {
+        $total   = $this->repository->countAll();
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        $page    = min($page, $totalPages);
+
+        $offset  = ($page - 1) * $perPage;
+        $items   = array_map(
+            static fn (Item $item) => $item->toArray(),
+            $this->repository->findPage($offset, $perPage),
+        );
+
+        return [
+            'data' => $items,
+            'meta' => [
+                'page'        => $page,
+                'per_page'    => $perPage,
+                'total'       => $total,
+                'total_pages' => $totalPages,
+            ],
+        ];
+    }
+
     /** GET /items/{id} -> 404 si no existe. */
     public function getById(int $id): array
     {

@@ -21,13 +21,28 @@ final class ItemControllerTest extends TestCase
         $this->controller = new ItemController(new ItemService(new InMemoryItemRepository(), new InMemoryCategoriaRepository()));
     }
 
-    public function testIndexDevuelve200ConLaLista(): void
+    public function testIndexDevuelve200ConElPrimerLote(): void
     {
         $response = $this->controller->index();
 
         $this->assertSame(200, $response->status);
-        $this->assertCount(3, $response->data);
-        $this->assertSame('Teclado mecanico', $response->data[0]['nombre']);
+        $this->assertSame(3, $response->data['meta']['total']);
+        $this->assertCount(3, $response->data['data']);
+        $this->assertSame('Teclado mecanico', $response->data['data'][0]['nombre']);
+    }
+
+    public function testIndexDevuelveUnaPaginaDePerPage(): void
+    {
+        $response = $this->controller->index(1, 2);
+
+        $this->assertSame(200, $response->status);
+        $this->assertCount(2, $response->data['data']);
+        $this->assertSame([
+            'page'        => 1,
+            'per_page'    => 2,
+            'total'       => 3,
+            'total_pages' => 2,
+        ], $response->data['meta']);
     }
 
     public function testShowDevuelve200ConElItem(): void

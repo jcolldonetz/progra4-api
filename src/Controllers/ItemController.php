@@ -21,10 +21,10 @@ final class ItemController
     {
     }
 
-    /** GET /items -> 200 con la lista. */
-    public function index(): JsonResponse
+    /** GET /items?page=&per_page= -> 200 con { data, meta }. */
+    public function index(int $page = 1, int $perPage = 10): JsonResponse
     {
-        return new JsonResponse(200, $this->service->listAll());
+        return new JsonResponse(200, $this->service->listPaginated($page, $perPage));
     }
 
     /** GET /items/{id} -> 200 | 404. */
