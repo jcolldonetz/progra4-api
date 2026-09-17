@@ -88,7 +88,7 @@ final class InMemoryRepositoryTest extends TestCase
         $admin = $repo->findByUsername('admin');
         $this->assertNotNull($admin);
         $this->assertSame(1, $admin->getId());
-        $this->assertTrue(password_verify('1234', $admin->getPasswordHash()));
+        $this->assertTrue(password_verify('qwerty67', $admin->getPasswordHash()));
         $this->assertNull($repo->findByUsername('inexistente'));
     }
 

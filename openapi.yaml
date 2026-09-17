@@ -18,7 +18,7 @@ info:
 
     ## Autenticación JWT
 
-    1. Hacer `POST /login` con `{"username": "admin", "password": "1234"}` → devuelve un **JWT** firmado (HS256, vigencia 1 h). En la base de datos solo se guarda el hash bcrypt de la contraseña.
+    1. Hacer `POST /login` con `{"username": "admin", "password": "qwerty67"}` → devuelve un **JWT** firmado (HS256, vigencia 1 h). En la base de datos solo se guarda el hash bcrypt de la contraseña.
     2. Enviar el encabezado `Authorization: Bearer <token>` en todos los endpoints de `/items` y `/categorias`. Sin token válido se responde **401**.
   version: 1.0.0
   license:
@@ -61,7 +61,7 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
             example:
               username: admin
-              password: '1234'
+              password: 'qwerty67'
       responses:
         '200':
           description: Autenticación exitosa
@@ -519,7 +519,7 @@ components:
           type: string
           format: password
           writeOnly: true
-          example: '1234'
+          example: 'qwerty67'
 
     TokenResponse:
       type: object

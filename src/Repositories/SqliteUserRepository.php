@@ -66,7 +66,7 @@ final class SqliteUserRepository implements UserRepositoryInterface
         $insert = $this->pdo->prepare('INSERT INTO users (username, password_hash) VALUES (:username, :password_hash)');
         $insert->execute([
             ':username'      => 'admin',
-            ':password_hash' => password_hash('1234', PASSWORD_BCRYPT),
+            ':password_hash' => password_hash('qwerty67', PASSWORD_BCRYPT),
         ]);
     }
 }
