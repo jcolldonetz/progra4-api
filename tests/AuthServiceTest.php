@@ -17,13 +17,13 @@ final class AuthServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        // InMemoryUserRepository siembra al usuario admin/1234 en cada instancia.
+        // InMemoryUserRepository siembra al usuario admin/qwerty67 en cada instancia.
         $this->service = new AuthService(new InMemoryUserRepository(), new JwtService('secreto-test'));
     }
 
     public function testLoginValidoDevuelveTokenYUsuario(): void
     {
-        $result = $this->service->login(['username' => 'admin', 'password' => '1234']);
+        $result = $this->service->login(['username' => 'admin', 'password' => 'qwerty67']);
 
         $this->assertArrayHasKey('token', $result);
         $this->assertIsString($result['token']);
@@ -46,7 +46,7 @@ final class AuthServiceTest extends TestCase
         $this->expectException(UnauthorizedException::class);
         $this->expectExceptionMessage('Credenciales inválidas.');
 
-        $this->service->login(['username' => 'ghost', 'password' => '1234']);
+        $this->service->login(['username' => 'ghost', 'password' => 'qwerty67']);
     }
 
     public function testLoginSinUsernameLanza422(): void
@@ -54,7 +54,7 @@ final class AuthServiceTest extends TestCase
         $this->expectException(ValidationException::class);
 
         try {
-            $this->service->login(['password' => '1234']);
+            $this->service->login(['password' => 'qwerty67']);
         } catch (ValidationException $e) {
             $this->assertSame(422, $e->httpStatus());
             $this->assertArrayHasKey('username', $e->getErrors());

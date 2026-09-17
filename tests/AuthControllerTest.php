@@ -22,7 +22,7 @@ final class AuthControllerTest extends TestCase
 
     public function testLoginDevuelve200ConToken(): void
     {
-        $response = $this->controller->login(['username' => 'admin', 'password' => '1234']);
+        $response = $this->controller->login(['username' => 'admin', 'password' => 'qwerty67']);
 
         $this->assertSame(200, $response->status);
         $this->assertIsString($response->data['token']);

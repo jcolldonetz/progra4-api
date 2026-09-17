@@ -129,7 +129,7 @@ $env:REPOSITORY_DRIVER='memory'; $env:JWT_SECRET='mi-secreto'; php -S localhost:
 
 ```powershell
 $resp = curl.exe -s -k -X POST -H "Content-Type: application/json" `
-     -d '{"username":"admin","password":"1234"}' `
+     -d '{"username":"admin","password":"qwerty67"}' `
      https://localhost:8443/login
 $token = ($resp | ConvertFrom-Json).token
 curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
@@ -160,7 +160,7 @@ devuelve toda la lista sin límite ni paginado**:
 ```powershell
 php seed_items.php 1000 --reset
 php -S localhost:8000 -t public
-# ingresa en http://localhost:8000 (admin / 1234) y observa el panel:
+# ingresa en http://localhost:8000 (admin / qwerty67) y observa el panel:
 # GET /items responde 1000 filas y el frontend las renderiza todas de una vez.
 ```
 
@@ -187,11 +187,11 @@ php -S localhost:8000 -t public
 
 ## Cómo testearlo
 
-### 1. Obtener token (credenciales sembradas: admin / 1234)
+### 1. Obtener token (credenciales sembradas: admin / qwerty67)
 
 ```powershell
 $resp = curl.exe -s -X POST -H "Content-Type: application/json" `
-     -d '{"username":"admin","password":"1234"}' `
+     -d '{"username":"admin","password":"qwerty67"}' `
      http://localhost:8000/login
 $resp                                        # ver la respuesta completa
 $token = ($resp | ConvertFrom-Json).token    # guardar el JWT
