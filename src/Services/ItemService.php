@@ -33,17 +33,31 @@ final class ItemService
         return array_map(static fn (Item $item) => $item->toArray(), $this->repository->findAll());
     }
 
-    /** GET /items?page=&per_page= -> { data, meta } con paginación. */
-    public function listPaginated(int $page, int $perPage): array
+    /**
+     * GET /items?page=&per_page=&categoria_id=&q= -> { data, meta } con
+     * paginación y filtros opcionales por categoría y texto del nombre.
+     */
+    public function listPaginated(int $page, int $perPage, ?int $categoriaId = null, ?string $search = null): array
     {
-        $total   = $this->repository->countAll();
+        if ($categoriaId !== null && $this->categorias->findById($categoriaId) === null) {
+            throw new ValidationException([
+                'categoria_id' => ['La categoria indicada no existe.'],
+            ]);
+        }
+
+        $search = $search !== null ? trim($search) : null;
+        if ($search === '') {
+            $search = null;
+        }
+
+        $total = max(0, $this->repository->countFiltered($categoriaId, $search));
         $totalPages = max(1, (int) ceil($total / $perPage));
         $page    = min($page, $totalPages);
 
         $offset  = ($page - 1) * $perPage;
         $items   = array_map(
             static fn (Item $item) => $item->toArray(),
-            $this->repository->findPage($offset, $perPage),
+            $this->repository->findPageFiltered($categoriaId, $search, $offset, $perPage),
         );
 
         return [

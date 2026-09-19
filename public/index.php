@@ -224,8 +224,52 @@ function pagination(): array
     return [$page, $perPage];
 }
 
+/**
+ * Parsea los filtros opcionales del listado de items (query string):
+ *   - categoria_id: filtra por categoría (entero positivo).
+ *   - q: texto de búsqueda parcial por nombre (hasta 100 caracteres).
+ * Lanza 422 si vienen inválidos.
+ *
+ * @return array{0: ?int, 1: ?string} [categoria_id, search]
+ */
+function filters(): array
+{
+    $errors = [];
+    $categoriaId = null;
+
+    if (isset($_GET['categoria_id']) && $_GET['categoria_id'] !== '') {
+        $raw = $_GET['categoria_id'];
+        $v = filter_var($raw, FILTER_VALIDATE_INT);
+        if ($v === false || (int) $v < 1) {
+            $errors['categoria_id'][] = 'El parámetro categoria_id debe ser un entero positivo.';
+        } else {
+            $categoriaId = (int) $v;
+        }
+    }
+
+    $search = $_GET['q'] ?? '';
+    if (is_array($search)) {
+        $errors['q'][] = 'El parámetro q debe ser texto.';
+        $search = null;
+    } else {
+        $search = trim((string) $search);
+        if ($search !== '' && mb_strlen($search) > 100) {
+            $errors['q'][] = 'El parámetro q no puede superar los 100 caracteres.';
+        } else {
+            $search = $search === '' ? null : $search;
+        }
+    }
+
+    if ($errors !== []) {
+        throw new ValidationException($errors);
+    }
+
+    return [$categoriaId, $search];
+}
+
 try {
     [$page, $perPage] = pagination();
+    [$categoriaId, $search] = filters();
     // Rutas PÚBLICAS: login y registro.
     if ($resource === 'login' && $method === 'POST' && $id === null) {
         $response = $authController->login(jsonBody());
@@ -252,7 +296,7 @@ try {
         unset($claims); // el controlador actual no los necesita; podrían inyectarse
 
         $response = match (true) {
-            $method === 'GET'    && $id === null => $itemController->index($page, $perPage),
+            $method === 'GET'    && $id === null => $itemController->index($page, $perPage, $categoriaId, $search),
             $method === 'POST'   && $id === null => $itemController->store(jsonBody()),
             $method === 'GET'    && $id !== null => $itemController->show($id),
             $method === 'PUT'    && $id !== null => $itemController->update($id, jsonBody()),

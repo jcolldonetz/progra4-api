@@ -39,6 +39,18 @@ interface ItemRepositoryInterface
     /** Cantidad de items que pertenecen a la categoria indicada. */
     public function countByCategoria(int $categoriaId): int;
 
+    /**
+     * Página de items que coinciden con los filtros opcionales, ordenados por id.
+     *
+     * @param ?int    $categoriaId filtra por categoría (null = cualquier categoría)
+     * @param ?string $search      texto parcial del nombre, sin distinguir mayúsculas
+     *                             (null o '' = sin filtro de texto)
+     */
+    public function findPageFiltered(?int $categoriaId, ?string $search, int $offset, int $limit): array;
+
+    /** Total de items que coinciden con los filtros opcionales. */
+    public function countFiltered(?int $categoriaId, ?string $search): int;
+
     /** Inserta el item y devuelve una NUEVA instancia con el id asignado. */
     public function create(Item $item): Item;
 

@@ -45,6 +45,33 @@ final class ItemControllerTest extends TestCase
         ], $response->data['meta']);
     }
 
+    public function testIndexFiltraPorCategoria(): void
+    {
+        $this->controller->store(['nombre' => 'Teclado RGB', 'precio' => 50, 'categoria_id' => 1]);
+
+        $response = $this->controller->index(1, 10, 1);
+
+        $this->assertSame(200, $response->status);
+        $this->assertSame(1, $response->data['meta']['total']);
+        $this->assertSame('Teclado RGB', $response->data['data'][0]['nombre']);
+    }
+
+    public function testIndexBuscaPorTexto(): void
+    {
+        $response = $this->controller->index(1, 10, null, 'monitor');
+
+        $this->assertSame(200, $response->status);
+        $this->assertSame(1, $response->data['meta']['total']);
+        $this->assertSame('Monitor 24"', $response->data['data'][0]['nombre']);
+    }
+
+    public function testIndexConCategoriaInexistenteLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->controller->index(1, 10, 999);
+    }
+
     public function testShowDevuelve200ConElItem(): void
     {
         $response = $this->controller->show('2');

@@ -99,6 +99,16 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
         return (int) $stmt->fetchColumn();
     }
 
+    public function findPageFiltered(?int $categoriaId, ?string $search, int $offset, int $limit): array
+    {
+        return array_values(array_slice($this->filterAll($categoriaId, $search), $offset, $limit));
+    }
+
+    public function countFiltered(?int $categoriaId, ?string $search): int
+    {
+        return count($this->filterAll($categoriaId, $search));
+    }
+
     public function create(Item $item): Item
     {
         $stmt = $this->pdo->prepare(
@@ -139,6 +149,17 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
         $stmt->execute([':id' => $id]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /** Items que cumplen los filtros opcionales (categoría y texto del nombre). */
+    private function filterAll(?int $categoriaId, ?string $search): array
+    {
+        return array_values(array_filter(
+            $this->findAll(),
+            static fn (Item $item): bool =>
+                ($categoriaId === null || $item->getCategoriaId() === $categoriaId)
+                && ($search === null || $search === '' || stripos($item->getNombre(), $search) !== false),
+        ));
     }
 
     private function hydrate(array $row): Item

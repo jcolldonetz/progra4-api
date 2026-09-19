@@ -173,7 +173,7 @@ php -S localhost:8000 -t public
 | Método | Ruta | Auth | Éxito | Errores |
 |--------|------|------|-------|---------|
 | POST | `/login` | pública | 200 `{token, ...}` | 401, 422 |
-| GET | `/items` | Bearer JWT | 200 lista | 401 |
+| GET | `/items` | Bearer JWT | 200 lista paginada; opcional `categoria_id` y `q` (texto del nombre) | 401 |
 | GET | `/items/{id}` | Bearer JWT | 200 item | 401, 404, 422 |
 | POST | `/items` | Bearer JWT | 201 creado | 401, 422 |
 | PUT | `/items/{id}` | Bearer JWT | 200 actualizado | 401, 404, 422 |

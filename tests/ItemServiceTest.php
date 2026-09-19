@@ -52,6 +52,64 @@ final class ItemServiceTest extends TestCase
         $this->assertCount(1, $result['data']);
     }
 
+    public function testListPaginatedFiltraPorCategoria(): void
+    {
+        $this->service->create(['nombre' => 'Monitor A', 'precio' => 100, 'categoria_id' => 1]);
+        $this->service->create(['nombre' => 'Monitor B', 'precio' => 200, 'categoria_id' => 1]);
+        $this->service->create(['nombre' => 'Auriculares', 'precio' => 30, 'categoria_id' => 2]);
+
+        $result = $this->service->listPaginated(1, 10, 1);
+
+        $this->assertSame(2, $result['meta']['total']);
+        $this->assertSame(['Monitor A', 'Monitor B'], array_column($result['data'], 'nombre'));
+    }
+
+    public function testListPaginatedBuscaPorTextoIgnoraMayusculas(): void
+    {
+        $result = $this->service->listPaginated(1, 10, null, 'mOuSe');
+
+        $this->assertSame(1, $result['meta']['total']);
+        $this->assertSame('Mouse inalambrico', $result['data'][0]['nombre']);
+    }
+
+    public function testListPaginatedBuscaParcialPorNombre(): void
+    {
+        $result = $this->service->listPaginated(1, 10, null, 'tecla');
+
+        $this->assertSame(1, $result['meta']['total']);
+        $this->assertSame('Teclado mecanico', $result['data'][0]['nombre']);
+    }
+
+    public function testListPaginatedCombinaCategoriaYTexto(): void
+    {
+        $this->service->create(['nombre' => 'Teclado RGB', 'precio' => 50, 'categoria_id' => 1]);
+        $this->service->create(['nombre' => 'Teclado USB', 'precio' => 40, 'categoria_id' => 2]);
+
+        $result = $this->service->listPaginated(1, 10, 1, 'teclado');
+
+        $this->assertSame(1, $result['meta']['total']);
+        $this->assertSame('Teclado RGB', $result['data'][0]['nombre']);
+    }
+
+    public function testListPaginatedSinResultadosDevuelvePaginaVacia(): void
+    {
+        $result = $this->service->listPaginated(1, 10, null, 'noexiste');
+
+        $this->assertSame(0, $result['meta']['total']);
+        $this->assertSame(1, $result['meta']['total_pages']);
+        $this->assertSame([], $result['data']);
+    }
+
+    public function testListPaginatedCategoriaInexistenteLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->assertErrors(
+            fn () => $this->service->listPaginated(1, 10, 999),
+            'categoria_id'
+        );
+    }
+
     public function testGetByIdDevuelveElItem(): void
     {
         $item = $this->service->getById(2);

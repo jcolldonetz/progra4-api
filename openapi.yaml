@@ -94,20 +94,40 @@ paths:
       security:
         - bearerAuth: []
       operationId: listarItems
-      summary: Listar todos los items
+      summary: Listar los items (paginado y con filtros opcionales)
+      description: |
+        Devuelve una página de items. Soporta paginación (`page`, `per_page`) y
+        filtros opcionales: `categoria_id` (filtrar por categoría) y `q`
+        (texto parcial del nombre, sin distinguir mayúsculas). La respuesta
+        incluye `meta` con el total y las páginas; el total refleja los filtros.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/CategoriaFilter'
+        - $ref: '#/components/parameters/ItemSearch'
       responses:
         '200':
-          description: Lista completa de items
+          description: Página de items con metadatos
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Item'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Item'
+                  meta:
+                    type: object
+                    properties:
+                      page: { type: integer, description: Página actual }
+                      per_page: { type: integer }
+                      total: { type: integer }
+                      total_pages: { type: integer }
               example:
-                - { id: 1, nombre: 'Teclado mecanico', precio: 25.5, categoria_id: null }
-                - { id: 2, nombre: 'Mouse inalambrico', precio: 15.9, categoria_id: null }
-                - { id: 3, nombre: 'Monitor 24"', precio: 189.99, categoria_id: null }
+                data:
+                  - { id: 1, nombre: 'Teclado mecanico', precio: 25.5, categoria_id: null }
+                meta: { page: 1, per_page: 10, total: 1002, total_pages: 101 }
 
     post:
       tags: [Items]
@@ -485,6 +505,45 @@ components:
         type: integer
         minimum: 1
       example: 1
+
+    Page:
+      name: page
+      in: query
+      description: Número de página (empieza en 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    PerPage:
+      name: per_page
+      in: query
+      description: Cantidad de resultados por página (máximo 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      example: 10
+
+    CategoriaFilter:
+      name: categoria_id
+      in: query
+      description: Filtra los items por categoría
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+
+    ItemSearch:
+      name: q
+      in: query
+      description: Busca por nombre (texto parcial, sin distinguir mayúsculas)
+      schema:
+        type: string
+        maxLength: 100
+      example: monitor
 
   responses:
     NoEncontrado:

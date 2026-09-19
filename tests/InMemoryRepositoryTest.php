@@ -61,6 +61,36 @@ final class InMemoryRepositoryTest extends TestCase
         $this->assertSame(2, $repo->countByCategoria(1));
     }
 
+    public function testItemFindPageFilteredPorCategoria(): void
+    {
+        $repo = new InMemoryItemRepository();
+        $repo->create(new Item(null, 'Monitor A', 100.0, 1));
+        $repo->create(new Item(null, 'Monitor B', 200.0, 1));
+
+        $this->assertSame(2, $repo->countFiltered(1, null));
+        $this->assertSame(0, $repo->countFiltered(2, null));
+        $this->assertCount(2, $repo->findPageFiltered(1, null, 0, 10));
+        $this->assertCount(1, $repo->findPageFiltered(1, null, 0, 1));
+    }
+
+    public function testItemFindPageFilteredPorTextoIgnoraMayusculas(): void
+    {
+        $repo = new InMemoryItemRepository();
+
+        $this->assertSame(1, $repo->countFiltered(null, 'TECLA'));
+        $this->assertSame(1, $repo->countFiltered(null, 'tecla'));
+        $this->assertSame('Teclado mecanico', $repo->findPageFiltered(null, 'MECANICO', 0, 10)[0]->getNombre());
+    }
+
+    public function testItemFindPageFilteredCombinaAmbosFiltros(): void
+    {
+        $repo = new InMemoryItemRepository();
+        $repo->create(new Item(null, 'Teclado RGB', 50.0, 1));
+
+        $this->assertSame(1, $repo->countFiltered(1, 'teclado'));
+        $this->assertSame(0, $repo->countFiltered(2, 'teclado'));
+    }
+
     public function testItemUpdatePersisteLosCambios(): void
     {
         $repo = new InMemoryItemRepository();

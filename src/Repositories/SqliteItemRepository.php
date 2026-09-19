@@ -122,6 +122,42 @@ final class SqliteItemRepository implements ItemRepositoryInterface
         return (int) $stmt->fetchColumn();
     }
 
+    public function findPageFiltered(?int $categoriaId, ?string $search, int $offset, int $limit): array
+    {
+        [$where, $params] = $this->filterWhere($categoriaId, $search);
+
+        $sql = 'SELECT id, nombre, precio, categoria_id FROM items';
+        if ($where !== '') {
+            $sql .= " WHERE {$where}";
+        }
+        $sql .= ' ORDER BY id LIMIT :limit OFFSET :offset';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map($this->hydrate(...), $stmt->fetchAll());
+    }
+
+    public function countFiltered(?int $categoriaId, ?string $search): int
+    {
+        [$where, $params] = $this->filterWhere($categoriaId, $search);
+
+        $sql = 'SELECT COUNT(*) FROM items';
+        if ($where !== '') {
+            $sql .= " WHERE {$where}";
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return (int) $stmt->fetchColumn();
+    }
+
     public function create(Item $item): Item
     {
         $stmt = $this->pdo->prepare(
@@ -162,6 +198,30 @@ final class SqliteItemRepository implements ItemRepositoryInterface
         $stmt->execute([':id' => $id]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Construye el WHERE y sus parámetros para los filtros opcionales
+     * (categoría y texto parcial del nombre). Devuelve ['', []] sin filtros.
+     *
+     * @return array{0: string, 1: array<string, int|string>} [where, params]
+     */
+    private function filterWhere(?int $categoriaId, ?string $search): array
+    {
+        $conditions = [];
+        $params = [];
+
+        if ($categoriaId !== null) {
+            $conditions[] = 'categoria_id = :categoria_id';
+            $params[':categoria_id'] = $categoriaId;
+        }
+
+        if ($search !== null && $search !== '') {
+            $conditions[] = 'lower(nombre) LIKE lower(:search)';
+            $params[':search'] = '%' . $search . '%';
+        }
+
+        return [implode(' AND ', $conditions), $params];
     }
 
     /** Convierte una fila de la BD en una entidad del dominio. */
