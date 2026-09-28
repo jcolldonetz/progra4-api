@@ -22,6 +22,11 @@ declare(strict_types=1);
  *   REPOSITORY_DRIVER   sqlite | memory      (default: sqlite)
  *   JWT_SECRET          secreto de firma     (default solo para desarrollo)
  *   JWT_TTL_SECONDS     vigencia del token   (default: 3600)
+ *   CORS_ALLOWED_ORIGINS  lista separada por comas (default: el dev server de
+ *                         Vite en localhost/127.0.0.1:5173). Sumar el origen
+ *                         del celular SOLO si se accede a la API directamente
+ *                         desde la red local; con el proxy de Vite no hace
+ *                         falta (ver README.md).
  */
 
 require dirname(__DIR__) . '/src/bootstrap.php';
@@ -60,10 +65,14 @@ header('Content-Type: application/json; charset=utf-8');
 // ---------------------------------------------------------------------------
 // header('Access-Control-Allow-Origin: *');
 
-$allowedOrigins = [
-    'http://localhost:5173', // servidor de desarrollo Vite
-    'http://127.0.0.1:5173',
-];
+// Lista blanca separada por comas, configurable con CORS_ALLOWED_ORIGINS.
+// El default cubre el dev server de Vite. Para probar desde un celular que
+// pegue DIRECTO a la API (sin proxy) hay que sumar el origen con la IP de la PC:
+//   $env:CORS_ALLOWED_ORIGINS='http://localhost:5173,http://192.168.100.73:5173'
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    explode(',', getenv('CORS_ALLOWED_ORIGINS') ?: 'http://localhost:5173,http://127.0.0.1:5173'),
+)));
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowedOrigins, true)) {

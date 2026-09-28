@@ -22,6 +22,7 @@ almacenamiento y las buenas prácticas básicas de seguridad.
 | Contraseñas hasheadas (bcrypt), nunca en texto plano | `password_hash()` al sembrar, `password_verify()` al loguear |
 | Autorización Bearer en el front controller | `public/index.php` (`requireBearerToken()`) |
 | HTTPS local con proxy TLS en PHP puro | `https-proxy.php`, `serve-https.cmd` |
+| CORS con lista blanca de orígenes (nunca `*`) | `public/index.php` (`CORS_ALLOWED_ORIGINS`) |
 
 Cada capa tiene una única responsabilidad:
 
@@ -119,6 +120,7 @@ Variables de entorno opcionales:
 | `REPOSITORY_DRIVER` | `sqlite` \| `memory` | `sqlite` | Archivo persistente o BD en RAM |
 | `JWT_SECRET` | texto | solo desarrollo | Secreto de firma HMAC |
 | `JWT_TTL_SECONDS` | número | `3600` | Vigencia del token |
+| `CORS_ALLOWED_ORIGINS` | orígenes separados por comas | `http://localhost:5173,http://127.0.0.1:5173` | Lista blanca de orígenes para CORS (ver abajo) |
 
 ```powershell
 # Ejemplo: memoria + secreto propio
@@ -134,6 +136,97 @@ $resp = curl.exe -s -k -X POST -H "Content-Type: application/json" `
 $token = ($resp | ConvertFrom-Json).token
 curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
 ```
+
+## Acceso desde la red local (celular en la misma red WiFi)
+
+La API **no necesita exponerse** para probar desde un celular. El flujo
+recomendado es que el navegador del teléfono entre al dev server del frontend, y
+que ese dev server le reenvíe las peticiones a la API:
+
+```
+celular  ──HTTP por WiFi──▶  Vite dev server (PC, :5173)   ← progra4-web
+                              └── proxy /api ──▶ esta API (PC, :8000)
+```
+
+Como el proxy corre en la PC, la API puede quedarse escuchando solo en el
+loopback:
+
+```powershell
+php -S localhost:8000 -t public     # alcanza solo desde la PC
+```
+
+Ventajas: no hay que abrir el puerto 8000, **no hace falta CORS** (la petición
+sale del mismo origen, `http://<IP>:5173`) y lo único que queda expuesto en la
+red es el dev server del frontend: la API y el archivo `data/items.sqlite` no
+son alcanzables desde fuera de la PC.
+
+El checklist completo (IP de la PC, firewall, `VITE_API_URL`, problemas
+frecuentes) está en el README del frontend:
+[`progra4-web` → Probar desde un celular en la misma red WiFi](../progra4-web/README.md#probar-desde-un-celular-en-la-misma-red-wifi).
+
+### Exponer la API en la red (opcional, avanzado)
+
+Solo si se quiere que el celular llame a la API **directamente**, sin proxy
+intermedio. Requiere los cuatro pasos siguientes.
+
+**1. Escuchar en todas las interfaces** en vez de solo en loopback. `0.0.0.0`
+hace que la API quede alcanzable desde cualquier equipo de la red, no solo desde
+la PC:
+
+```powershell
+php -S 0.0.0.0:8000 -t public
+```
+
+> Cualquiera de los dos valores obliga a abrir el puerto en el firewall. `0.0.0.0`
+> además expone la API a toda la red (vecinos, hotspot de un café, red pública),
+> por lo que conviene apagar el servidor al terminar la clase.
+
+**2. Permitir el origen del frontend en CORS.** La lista blanca de
+`public/index.php` acepta por defecto solo `http://localhost:5173` y
+`http://127.0.0.1:5173`; con la IP de la PC hay que sumar el origen del
+*frontend* (puerto 5173), no el de la API:
+
+```powershell
+$env:CORS_ALLOWED_ORIGINS='http://localhost:5173,http://192.168.100.73:5173'
+php -S 0.0.0.0:8000 -t public
+```
+
+> Ojo con el origen: es el del navegador (`http://192.168.100.73:5173`), no
+> `http://192.168.100.73:8000`. Si no coincide, el navegador bloquea la
+> respuesta y la consola del celular muestra el error de
+> `Access-Control-Allow-Origin`.
+
+**3. Abrir los puertos en el Firewall de Windows** (PowerShell como
+administrador), para redes privadas:
+
+```powershell
+New-NetFirewallRule -DisplayName "progra4-api (8000)" `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private
+```
+
+**4. Apuntar el frontend a la IP de la PC**, en `progra4-web/.env`:
+
+```
+VITE_API_URL=http://192.168.100.73:8000
+```
+
+Probar que responde desde la red:
+
+```powershell
+curl.exe -i -X POST -H "Content-Type: application/json" -H "Origin: http://192.168.100.73:5173" `
+  -d '{"username":"admin","password":"qwerty67"}' http://192.168.100.73:8000/login
+# -> 200 y Access-Control-Allow-Origin: http://192.168.100.73:5173
+```
+
+### Por qué HTTPS local no se usa desde el celular
+
+`https-proxy.php` escucha **solo en `127.0.0.1`** y el certificado de
+`make-cert.cmd` cubre únicamente `localhost` / `127.0.0.1` (`subjectAltName`).
+Un teléfono que entra por `192.168.x.x` no llegaría ni al certificado, porque el
+proxy ni siquiera escucha en la red. Habría que exponerlo en `0.0.0.0` y
+regenerar el certificado incluyendo la IP de la PC — se deja fuera del alcance
+de la clase: HTTP en la red local para la demo y HTTPS detrás de Nginx/Caddy o
+un túnel con CA pública.
 
 ## Seeder de datos de demostración
 
