@@ -1,6 +1,10 @@
 # Dependencias de Composer (solo desarrollo/tests)
 /vendor/
 
+# Archivos de configuración de entorno
+.env
+.env.production
+
 # Caché de PHPUnit
 /.phpunit.cache/
 
