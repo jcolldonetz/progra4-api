@@ -64,7 +64,7 @@ final class CategoriaServiceTest extends TestCase
         $items = $this->service->listItems(2);
 
         $this->assertCount(2, $items);
-        $this->assertSame(['id', 'nombre', 'precio', 'categoria_id'], array_keys($items[0]));
+        $this->assertSame(['id', 'nombre', 'precio', 'categoria_id', 'stock'], array_keys($items[0]));
         $this->assertSame('Teclado USB', $items[0]['nombre']);
     }
 

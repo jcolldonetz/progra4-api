@@ -18,6 +18,7 @@ final class Item
         private readonly string $nombre,
         private readonly float $precio,
         private readonly ?int $categoriaId = null,
+        private readonly int $stock = 0,
     ) {
     }
 
@@ -41,6 +42,11 @@ final class Item
         return $this->categoriaId;
     }
 
+    public function getStock(): int
+    {
+        return $this->stock;
+    }
+
     /** Representación como array lista para serializar a JSON. */
     public function toArray(): array
     {
@@ -49,6 +55,7 @@ final class Item
             'nombre'       => $this->nombre,
             'precio'       => $this->precio,
             'categoria_id' => $this->categoriaId,
+            'stock'        => $this->stock,
         ];
     }
 }

@@ -55,15 +55,12 @@ $pdo = new PDO('sqlite:' . $dbFile, null, null, [
 $pdo->exec('CREATE TABLE IF NOT EXISTS categorias (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL)');
 
 $cols = $pdo->query('PRAGMA table_info(items)')->fetchAll();
-$hasCategoriaId = false;
-foreach ($cols as $c) {
-    if (($c['name'] ?? '') === 'categoria_id') {
-        $hasCategoriaId = true;
-        break;
-    }
-}
-if (!$hasCategoriaId) {
+$colNames = array_column($cols, 'name');
+if (!in_array('categoria_id', $colNames, true)) {
     $pdo->exec('ALTER TABLE items ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
+}
+if (!in_array('stock', $colNames, true)) {
+    $pdo->exec('ALTER TABLE items ADD COLUMN stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)');
 }
 
 // -- Limpiar solo si se pide --reset --
@@ -228,7 +225,7 @@ foreach ($items as [$nombre, $precio, $categoria]) {
         continue; // saltar duplicado
     }
     $seen[$key] = true;
-    $final[]    = [$nombre, $precio, $categoria];
+    $final[]    = [$nombre, $precio, $categoria, generarStock()];
 }
 
 // Rellenar con variaciones genéricas hasta llegar exactamente a la cantidad.
@@ -242,7 +239,7 @@ while (count($final) < $cantidad) {
     $key    = mb_strtolower($nombre);
     if (!isset($seen[$key])) {
         $seen[$key] = true;
-        $final[]    = [$nombre, generarPrecio($cat), $cat];
+        $final[]    = [$nombre, generarPrecio($cat), $cat, generarStock()];
     }
     $idx++;
 }
@@ -256,14 +253,15 @@ while (count($final) < $cantidad) {
 
 $pdo->beginTransaction();
 try {
-    $insert = $pdo->prepare('INSERT INTO items (nombre, precio, categoria_id) VALUES (:nombre, :precio, :categoria_id)');
+    $insert = $pdo->prepare('INSERT INTO items (nombre, precio, categoria_id, stock) VALUES (:nombre, :precio, :categoria_id, :stock)');
 
     $count = 0;
-    foreach ($final as [$nombre, $precio, $categoria]) {
+    foreach ($final as [$nombre, $precio, $categoria, $stock]) {
         $insert->execute([
             ':nombre'       => $nombre,
             ':precio'       => $precio,
             ':categoria_id' => $categoriaIds[$categoria] ?? null,
+            ':stock'        => $stock,
         ]);
         $count++;
     }
@@ -297,4 +295,10 @@ function generarPrecio(string $categoria): float
     $raw = $min + ($max - $min) * (pow(mt_rand() / mt_getrandmax(), 1.5));
 
     return round($raw, 2);
+}
+
+function generarStock(): int
+{
+    // Stock entero con distribución ponderada hacia abajo (pocos productos agotados).
+    return (int) floor(120 * pow(mt_rand() / mt_getrandmax(), 1.2));
 }

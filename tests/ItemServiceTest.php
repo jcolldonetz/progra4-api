@@ -27,7 +27,7 @@ final class ItemServiceTest extends TestCase
 
         $this->assertCount(3, $items);
         $this->assertSame('Teclado mecanico', $items[0]['nombre']);
-        $this->assertSame(['id', 'nombre', 'precio', 'categoria_id'], array_keys($items[0]));
+        $this->assertSame(['id', 'nombre', 'precio', 'categoria_id', 'stock'], array_keys($items[0]));
     }
 
     public function testListPaginatedDevuelveMetaYPrimeraPagina(): void
@@ -132,7 +132,36 @@ final class ItemServiceTest extends TestCase
         $this->assertSame(4, $created['id']);
         $this->assertSame('Lampara LED', $created['nombre']);
         $this->assertSame(12.5, $created['precio']);
+        $this->assertSame(0, $created['stock']);
         $this->assertCount(4, $this->service->listAll());
+    }
+
+    public function testCreateConStockPersisteElStock(): void
+    {
+        $created = $this->service->create(['nombre' => 'Router', 'precio' => 80.0, 'stock' => 7]);
+
+        $this->assertSame(7, $created['stock']);
+        $this->assertSame(7, $this->service->getById($created['id'])['stock']);
+    }
+
+    public function testCreateStockNegativoLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->assertErrors(
+            fn () => $this->service->create(['nombre' => 'X', 'precio' => 1, 'stock' => -3]),
+            'stock'
+        );
+    }
+
+    public function testCreateStockNoEnteroLanza422(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->assertErrors(
+            fn () => $this->service->create(['nombre' => 'X', 'precio' => 1, 'stock' => 'abc']),
+            'stock'
+        );
     }
 
     public function testCreateNombreDuplicadoIgnoraMayusculas(): void

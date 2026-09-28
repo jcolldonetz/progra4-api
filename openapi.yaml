@@ -626,6 +626,11 @@ components:
           minimum: 1
           description: Categoría a la que pertenece (relación 1:N; null si no tiene)
           example: 4
+        stock:
+          type: integer
+          minimum: 0
+          description: Unidades disponibles en inventario (default 0)
+          example: 12
 
     ItemInput:
       type: object
@@ -647,6 +652,11 @@ components:
           minimum: 1
           description: Debe referenciar una categoría existente para ser válido
           example: 4
+        stock:
+          type: integer
+          minimum: 0
+          description: Unidades disponibles; opcional (default 0)
+          example: 12
 
     Categoria:
       type: object

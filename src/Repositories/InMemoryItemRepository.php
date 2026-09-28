@@ -21,7 +21,8 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre       TEXT NOT NULL,
             precio       REAL NOT NULL CHECK (precio >= 0),
-            categoria_id INTEGER REFERENCES categorias(id)
+            categoria_id INTEGER REFERENCES categorias(id),
+            stock        INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)
         )
         SQL;
 
@@ -38,7 +39,7 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
     public function findAll(): array
     {
         $rows = $this->pdo
-            ->query('SELECT id, nombre, precio, categoria_id FROM items ORDER BY id')
+            ->query('SELECT id, nombre, precio, categoria_id, stock FROM items ORDER BY id')
             ->fetchAll();
 
         return array_map($this->hydrate(...), $rows);
@@ -47,7 +48,7 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
     public function findById(int $id): ?Item
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, nombre, precio, categoria_id FROM items WHERE id = :id'
+            'SELECT id, nombre, precio, categoria_id, stock FROM items WHERE id = :id'
         );
         $stmt->execute([':id' => $id]);
 
@@ -58,7 +59,7 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
     public function findByName(string $nombre): ?Item
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, nombre, precio, categoria_id FROM items WHERE lower(nombre) = lower(:nombre)'
+            'SELECT id, nombre, precio, categoria_id, stock FROM items WHERE lower(nombre) = lower(:nombre)'
         );
         $stmt->execute([':nombre' => $nombre]);
 
@@ -84,7 +85,7 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
     public function findByCategoria(int $categoriaId): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, nombre, precio, categoria_id FROM items WHERE categoria_id = :categoria_id ORDER BY id'
+            'SELECT id, nombre, precio, categoria_id, stock FROM items WHERE categoria_id = :categoria_id ORDER BY id'
         );
         $stmt->execute([':categoria_id' => $categoriaId]);
 
@@ -112,12 +113,13 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
     public function create(Item $item): Item
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO items (nombre, precio, categoria_id) VALUES (:nombre, :precio, :categoria_id)'
+            'INSERT INTO items (nombre, precio, categoria_id, stock) VALUES (:nombre, :precio, :categoria_id, :stock)'
         );
         $stmt->execute([
             ':nombre'       => $item->getNombre(),
             ':precio'       => $item->getPrecio(),
             ':categoria_id' => $item->getCategoriaId(),
+            ':stock'        => $item->getStock(),
         ]);
 
         return new Item(
@@ -125,18 +127,20 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
             $item->getNombre(),
             $item->getPrecio(),
             $item->getCategoriaId(),
+            $item->getStock(),
         );
     }
 
     public function update(Item $item): Item
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE items SET nombre = :nombre, precio = :precio, categoria_id = :categoria_id WHERE id = :id'
+            'UPDATE items SET nombre = :nombre, precio = :precio, categoria_id = :categoria_id, stock = :stock WHERE id = :id'
         );
         $stmt->execute([
             ':nombre'       => $item->getNombre(),
             ':precio'       => $item->getPrecio(),
             ':categoria_id' => $item->getCategoriaId(),
+            ':stock'        => $item->getStock(),
             ':id'           => $item->getId(),
         ]);
 
@@ -169,23 +173,25 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
             (string) $row['nombre'],
             (float) $row['precio'],
             $row['categoria_id'] !== null ? (int) $row['categoria_id'] : null,
+            (int) $row['stock'],
         );
     }
 
     private function seed(): void
     {
         $insert = $this->pdo->prepare(
-            'INSERT INTO items (nombre, precio, categoria_id) VALUES (:nombre, :precio, :categoria_id)'
+            'INSERT INTO items (nombre, precio, categoria_id, stock) VALUES (:nombre, :precio, :categoria_id, :stock)'
         );
         foreach ([
-            ['Teclado mecanico', 25.50, null],
-            ['Mouse inalambrico', 15.90, null],
-            ['Monitor 24"', 189.99, null],
-        ] as [$nombre, $precio, $categoriaId]) {
+            ['Teclado mecanico', 25.50, null, 12],
+            ['Mouse inalambrico', 15.90, null, 30],
+            ['Monitor 24"', 189.99, null, 5],
+        ] as [$nombre, $precio, $categoriaId, $stock]) {
             $insert->execute([
                 ':nombre'       => $nombre,
                 ':precio'       => $precio,
                 ':categoria_id' => $categoriaId,
+                ':stock'        => $stock,
             ]);
         }
     }

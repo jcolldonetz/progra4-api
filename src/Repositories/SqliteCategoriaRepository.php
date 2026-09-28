@@ -98,20 +98,21 @@ final class SqliteCategoriaRepository implements CategoriaRepositoryInterface
     }
 
     /**
-     * Asegura que items tenga la columna categoria_id.
+     * Asegura que items tenga las columnas categoria_id y stock.
      * SQLite no permite "ADD COLUMN IF NOT EXISTS", por eso se consulta PRAGMA
      * y se agrega la columna SOLO si la BD es anterior a esta versión.
      */
     private function migrateItemsTable(): void
     {
-        $columns = $this->pdo->query('PRAGMA table_info(items)')->fetchAll();
-        foreach ($columns as $column) {
-            if (($column['name'] ?? '') === 'categoria_id') {
-                return;
-            }
+        $columns = array_column($this->pdo->query('PRAGMA table_info(items)')->fetchAll(), 'name');
+
+        if (!in_array('categoria_id', $columns, true)) {
+            $this->pdo->exec('ALTER TABLE items ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
         }
 
-        $this->pdo->exec('ALTER TABLE items ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
+        if (!in_array('stock', $columns, true)) {
+            $this->pdo->exec('ALTER TABLE items ADD COLUMN stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0)');
+        }
     }
 
     /** Datos de ejemplo para la demo, solo si la tabla está vacía. */

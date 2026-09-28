@@ -19,6 +19,7 @@ final class ModelTest extends TestCase
         $this->assertSame('Teclado', $item->getNombre());
         $this->assertSame(25.5, $item->getPrecio());
         $this->assertNull($item->getCategoriaId());
+        $this->assertSame(0, $item->getStock());
     }
 
     public function testItemNuevoTieneIdNulo(): void
@@ -33,14 +34,22 @@ final class ModelTest extends TestCase
         $item = new Item(3, 'Monitor', 189.99, 7);
 
         $this->assertSame(7, $item->getCategoriaId());
+        $this->assertSame(0, $item->getStock());
+    }
+
+    public function testItemGuardaStock(): void
+    {
+        $item = new Item(4, 'Impresora', 120.0, null, 15);
+
+        $this->assertSame(15, $item->getStock());
     }
 
     public function testItemToArraySerializaTodosLosCampos(): void
     {
-        $item = new Item(2, 'Mouse', 15.9, 3);
+        $item = new Item(2, 'Mouse', 15.9, 3, 25);
 
         $this->assertSame(
-            ['id' => 2, 'nombre' => 'Mouse', 'precio' => 15.9, 'categoria_id' => 3],
+            ['id' => 2, 'nombre' => 'Mouse', 'precio' => 15.9, 'categoria_id' => 3, 'stock' => 25],
             $item->toArray()
         );
     }

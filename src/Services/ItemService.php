@@ -80,17 +80,17 @@ final class ItemService
     /** POST /items -> valida, aplica reglas y crea. */
     public function create(array $data): array
     {
-        [$nombre, $precio, $categoriaId] = $this->validate($data);
+        [$nombre, $precio, $categoriaId, $stock] = $this->validate($data);
         $this->assertNameAvailable($nombre);
 
-        return $this->repository->create(new Item(null, $nombre, $precio, $categoriaId))->toArray();
+        return $this->repository->create(new Item(null, $nombre, $precio, $categoriaId, $stock))->toArray();
     }
 
     /** PUT /items/{id} -> 404 si no existe; valida; respeta regla de nombre único. */
     public function update(int $id, array $data): array
     {
         $this->requireItem($id);
-        [$nombre, $precio, $categoriaId] = $this->validate($data);
+        [$nombre, $precio, $categoriaId, $stock] = $this->validate($data);
 
         $other = $this->repository->findByName($nombre);
         if ($other !== null && $other->getId() !== $id) {
@@ -99,7 +99,7 @@ final class ItemService
             ]);
         }
 
-        return $this->repository->update(new Item($id, $nombre, $precio, $categoriaId))->toArray();
+        return $this->repository->update(new Item($id, $nombre, $precio, $categoriaId, $stock))->toArray();
     }
 
     /** DELETE /items/{id} -> 404 si no existía. */
@@ -136,22 +136,24 @@ final class ItemService
     }
 
     /**
-     * Valida "nombre", "precio" y "categoria_id"; devuelve los valores
-     * normalizados. CAVEAT de diseño: la validación de la FK se apoya en el
-     * repositorio de categorias (consulta extra por cada create/update) para
-     * que el error sea 422 y no un constraint SQL.
+     * Valida "nombre", "precio", "categoria_id" y "stock"; devuelve los
+     * valores normalizados. CAVEAT de diseño: la validación de la FK se apoya
+     * en el repositorio de categorias (consulta extra por cada create/update)
+     * para que el error sea 422 y no un constraint SQL.
      *
      * Reglas:
      *  - nombre: obligatorio, texto recortado, entre 1 y 100 caracteres.
      *  - precio: obligatorio, numérico, mayor o igual que cero.
      *  - categoria_id: OPCIONAL; si viene, entero positivo y debe existir.
+     *  - stock: OPCIONAL (default 0); si viene, entero mayor o igual que cero.
      *
-     * @return array{0: string, 1: float, 2: ?int} [nombre, precio, categoria_id]
+     * @return array{0: string, 1: float, 2: ?int, 3: int} [nombre, precio, categoria_id, stock]
      */
     private function validate(array $data): array
     {
         $errors = [];
         $categoriaId = null;
+        $stock = 0;
 
         if (!array_key_exists('nombre', $data)) {
             $errors['nombre'][] = 'El nombre es obligatorio.';
@@ -186,10 +188,21 @@ final class ItemService
             }
         }
 
+        if (!array_key_exists('stock', $data) || $data['stock'] === null || $data['stock'] === '') {
+            $stock = 0;
+        } else {
+            $candidato = filter_var($data['stock'], FILTER_VALIDATE_INT);
+            if ($candidato === false || (int) $candidato < 0) {
+                $errors['stock'][] = 'El stock debe ser un entero mayor o igual a cero.';
+            } else {
+                $stock = (int) $candidato;
+            }
+        }
+
         if ($errors !== []) {
             throw new ValidationException($errors);
         }
 
-        return [trim((string) $data['nombre']), (float) $data['precio'], $categoriaId];
+        return [trim((string) $data['nombre']), (float) $data['precio'], $categoriaId, $stock];
     }
 }
