@@ -4,5 +4,9 @@
 # Caché de PHPUnit
 /.phpunit.cache/
 
+# Configuracion local con secretos del proyecto. El template
+# .env.example SÍ se versiona.
+/.env
+
 # Databases SQLite
 *.sqlite

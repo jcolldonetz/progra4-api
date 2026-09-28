@@ -204,6 +204,16 @@ final class SqliteItemRepository implements ItemRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    public function decrementStock(int $id, int $cantidad): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE items SET stock = stock - :cantidad WHERE id = :id AND stock >= :cantidad'
+        );
+        $stmt->execute([':cantidad' => $cantidad, ':id' => $id]);
+
+        return $stmt->rowCount() > 0;
+    }
+
     /**
      * Construye el WHERE y sus parámetros para los filtros opcionales
      * (categoría y texto parcial del nombre). Devuelve ['', []] sin filtros.

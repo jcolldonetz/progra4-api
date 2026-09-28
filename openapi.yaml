@@ -40,6 +40,8 @@ tags:
     description: CRUD de la entidad Item (requiere JWT Bearer)
   - name: Categorias
     description: CRUD de la entidad Categoria y su relación 1:N con Item (requiere JWT Bearer)
+  - name: Pedidos
+    description: Registro de pedidos (descuenta stock) y notificaciones realtime (requiere JWT Bearer)
 
 paths:
   /login:
@@ -477,6 +479,112 @@ paths:
         '422':
           $ref: '#/components/responses/IdInvalido'
 
+  /pedidos:
+    get:
+      tags: [Pedidos]
+      security:
+        - bearerAuth: []
+      operationId: listarPedidos
+      summary: Listar el historial de pedidos
+      description: |
+        Devuelve todos los pedidos registrados, en orden de creación.
+      responses:
+        '200':
+          description: Historial de pedidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pedido'
+              example:
+                - id: 1
+                  item_id: 1
+                  cantidad: 2
+                  total: 51.0
+                  username: admin
+                  created_at: '2026-09-28T14:30:00+00:00'
+
+    post:
+      tags: [Pedidos]
+      security:
+        - bearerAuth: []
+      operationId: crearPedido
+      summary: Registrar un pedido (descuenta stock y notifica en tiempo real)
+      description: |
+        Valida `item_id` y `cantidad`, descuenta el stock del item de forma
+        atómica y registra el pedido. Si el stock no alcanza responde **422**.
+        Cuando Redis está configurado (`REDIS_URL` de la API) se publica un
+        evento en el canal `items.stock` que el server de notificaciones
+        (WebSockets) reenvía a los demás clientes conectados para que vean el
+        stock del item actualizado en vivo. Respuesta 201 con el pedido creado
+        y el item con su nuevo stock.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoInput'
+            example:
+              item_id: 1
+              cantidad: 2
+      responses:
+        '201':
+          description: Pedido creado y stock descontado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedido:
+                    $ref: '#/components/schemas/Pedido'
+                  item:
+                    $ref: '#/components/schemas/Item'
+                  username:
+                    type: string
+                    example: admin
+              example:
+                pedido:
+                  id: 1
+                  item_id: 1
+                  cantidad: 2
+                  total: 51.0
+                  username: admin
+                  created_at: '2026-09-28T14:30:00+00:00'
+                item:
+                  id: 1
+                  nombre: Teclado mecanico
+                  precio: 25.5
+                  categoria_id: null
+                  stock: 10
+                username: admin
+        '404':
+          description: El item no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+        '422':
+          description: Datos inválidos o stock insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                camposInválidos:
+                  summary: Faltan campos obligatorios
+                  value:
+                    error: La solicitud contiene datos inválidos.
+                    errors:
+                      item_id: ['El item_id es obligatorio.']
+                      cantidad: ['La cantidad es obligatoria.']
+                stockInsuficiente:
+                  summary: No hay stock suficiente
+                  value:
+                    error: La solicitud contiene datos inválidos.
+                    errors:
+                      stock: ["Stock insuficiente para 'Teclado mecanico'. Disponible: 1."]
+
 components:
   securitySchemes:
     bearerAuth:
@@ -684,6 +792,52 @@ components:
           minLength: 1
           maxLength: 100
           example: Redes
+
+    Pedido:
+      type: object
+      required: [id, item_id, cantidad, total, username, created_at]
+      properties:
+        id:
+          type: integer
+          example: 1
+        item_id:
+          type: integer
+          description: Item pedido (relación 1:N con la entidad Item)
+          example: 1
+        cantidad:
+          type: integer
+          minimum: 1
+          example: 2
+        total:
+          type: number
+          format: double
+          minimum: 0
+          description: Precio del item por la cantidad, calculado al hacer el pedido
+          example: 51.0
+        username:
+          type: string
+          description: Usuario que hizo el pedido (claim del JWT)
+          example: admin
+        created_at:
+          type: string
+          format: date-time
+          description: Fecha/hora de creación (ISO-8601 UTC)
+          example: '2026-09-28T14:30:00+00:00'
+
+    PedidoInput:
+      type: object
+      required: [item_id, cantidad]
+      properties:
+        item_id:
+          type: integer
+          minimum: 1
+          description: Id del item a pedir (debe existir)
+          example: 1
+        cantidad:
+          type: integer
+          minimum: 1
+          description: Cuántas unidades pedir (se descuentan del stock)
+          example: 2
 
     NotFoundError:
       type: object

@@ -31,23 +31,38 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+// Las dependencias de vendor (p. ej. Predis) emiten avisos de deprecación con
+// PHP 8.5. Con display_errors encendido esos avisos se vuelcan como HTML en el
+// body de la respuesta y ROMPEN el JSON. Una API debe devolver solo JSON:
+// los errores reales ya se serializan abajo via try/catch (500) y se registran
+// con error_log. En el dev server (php -S) error_log queda visible en consola.
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 use App\Controllers\AuthController;
 use App\Controllers\CategoriaController;
 use App\Controllers\ItemController;
+use App\Controllers\PedidoController;
 use App\Exceptions\ApiException;
 use App\Exceptions\UnauthorizedException;
 use App\Exceptions\ValidationException;
 use App\Http\JsonResponse;
+use App\Realtime\NullEventPublisher;
+use App\Realtime\RedisEventPublisher;
 use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
+use App\Repositories\InMemoryPedidoRepository;
 use App\Repositories\InMemoryUserRepository;
 use App\Repositories\SqliteCategoriaRepository;
 use App\Repositories\SqliteItemRepository;
+use App\Repositories\SqlitePedidoRepository;
 use App\Repositories\SqliteUserRepository;
 use App\Security\JwtService;
 use App\Services\AuthService;
 use App\Services\CategoriaService;
 use App\Services\ItemService;
+use App\Services\PedidoService;
+use Predis\Client;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -165,11 +180,33 @@ function requireBearerToken(JwtService $jwt): array
 $driver = strtolower(getenv('REPOSITORY_DRIVER') ?: 'sqlite');
 $dbFile = dirname(__DIR__) . '/data/items.sqlite';
 
-[$itemRepository, $userRepository, $categoriaRepository] = match ($driver) {
-    'sqlite' => [new SqliteItemRepository($dbFile), new SqliteUserRepository($dbFile), new SqliteCategoriaRepository($dbFile)],
-    'memory' => [new InMemoryItemRepository(), new InMemoryUserRepository(), new InMemoryCategoriaRepository()],
-    default  => throw new RuntimeException("REPOSITORY_DRIVER inválido: '{$driver}' (use 'sqlite' o 'memory')."),
-};
+if (!in_array($driver, ['sqlite', 'memory'], true)) {
+    throw new RuntimeException("REPOSITORY_DRIVER inválido: '{$driver}' (use 'sqlite' o 'memory').");
+}
+
+$itemRepository     = $driver === 'sqlite' ? new SqliteItemRepository($dbFile) : new InMemoryItemRepository();
+$userRepository     = $driver === 'sqlite' ? new SqliteUserRepository($dbFile) : new InMemoryUserRepository();
+$categoriaRepository = $driver === 'sqlite' ? new SqliteCategoriaRepository($dbFile) : new InMemoryCategoriaRepository();
+
+// El repositorio de pedidos comparte el mismo almacén de items (descuento de
+// stock atómico). En 'memory' inyectamos la misma instancia de items.
+$pedidoRepository   = $driver === 'sqlite'
+    ? new SqlitePedidoRepository($dbFile)
+    : new InMemoryPedidoRepository($itemRepository);
+
+// Publisher de eventos realtime: si hay REDIS_URL configurada publicamos en
+// Redis (predis); si no, un NullEventPublisher para que la API siga normal.
+$redisUrl = getenv('REDIS_URL') ?: '';
+if ($redisUrl !== '') {
+    try {
+        $publisher = new RedisEventPublisher(new Client($redisUrl));
+    } catch (\Throwable $e) {
+        error_log('[realtime] Redis no disponible, se usa NullEventPublisher: ' . $e->getMessage());
+        $publisher = new NullEventPublisher();
+    }
+} else {
+    $publisher = new NullEventPublisher();
+}
 
 $jwt = new JwtService(
     getenv('JWT_SECRET') ?: 'secreto-solo-para-desarrollo-cambiar',
@@ -179,6 +216,7 @@ $jwt = new JwtService(
 $authController     = new AuthController(new AuthService($userRepository, $jwt));
 $itemController     = new ItemController(new ItemService($itemRepository, $categoriaRepository));
 $categoriaController = new CategoriaController(new CategoriaService($categoriaRepository, $itemRepository));
+$pedidoController    = new PedidoController(new PedidoService($pedidoRepository, $itemRepository, $publisher));
 
 // ---------------------------------------------------------------------------
 // 2) Enrutado mínimo: /items y /items/{id}
@@ -311,6 +349,17 @@ try {
             $method === 'PUT'    && $id !== null => $itemController->update($id, jsonBody()),
             $method === 'DELETE' && $id !== null => $itemController->destroy($id),
             default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} /items" . ($id !== null ? "/{$id}" : '')]),
+        };
+    } elseif ($resource === 'pedidos') {
+        // Rutas PROTEGIDAS: se corta aquí si el JWT no es válido (401).
+        // El username se toma de los claims del token y se inyecta al servicio.
+        $claims = requireBearerToken($jwt);
+        $username = (string) ($claims['username'] ?? '');
+
+        $response = match (true) {
+            $method === 'GET'  && $id === null => $pedidoController->index(),
+            $method === 'POST' && $id === null => $pedidoController->store($username, jsonBody()),
+            default => new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} /pedidos" . ($id !== null ? "/{$id}" : '')]),
         };
     } else {
         $response = new JsonResponse(404, ['error' => "Ruta no encontrada: {$method} " . ($_SERVER['REQUEST_URI'] ?? '')]);

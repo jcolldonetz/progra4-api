@@ -6,6 +6,7 @@ namespace App\Tests;
 
 use App\Models\Categoria;
 use App\Models\Item;
+use App\Models\Pedido;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 
@@ -71,5 +72,41 @@ final class ModelTest extends TestCase
         $this->assertSame('admin', $user->getUsername());
         $this->assertSame(['id' => 1, 'username' => 'admin'], $user->toArray());
         $this->assertArrayNotHasKey('password_hash', $user->toArray());
+    }
+
+    public function testPedidoGuardaSusPropiedades(): void
+    {
+        $pedido = new Pedido(3, 1, 2, 51.0, 'admin', '2026-09-28T14:30:00+00:00');
+
+        $this->assertSame(3, $pedido->getId());
+        $this->assertSame(1, $pedido->getItemId());
+        $this->assertSame(2, $pedido->getCantidad());
+        $this->assertSame(51.0, $pedido->getTotal());
+        $this->assertSame('admin', $pedido->getUsername());
+        $this->assertSame('2026-09-28T14:30:00+00:00', $pedido->getCreatedAt());
+    }
+
+    public function testPedidoNuevoTieneIdNulo(): void
+    {
+        $pedido = new Pedido(null, 1, 1, 25.5, 'ana', '2026-09-28T14:31:00+00:00');
+
+        $this->assertNull($pedido->getId());
+    }
+
+    public function testPedidoToArraySerializaTodosLosCampos(): void
+    {
+        $pedido = new Pedido(1, 2, 3, 47.7, 'admin', '2026-09-28T14:30:00+00:00');
+
+        $this->assertSame(
+            [
+                'id'         => 1,
+                'item_id'    => 2,
+                'cantidad'   => 3,
+                'total'      => 47.7,
+                'username'   => 'admin',
+                'created_at' => '2026-09-28T14:30:00+00:00',
+            ],
+            $pedido->toArray(),
+        );
     }
 }

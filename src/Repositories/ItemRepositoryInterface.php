@@ -59,4 +59,11 @@ interface ItemRepositoryInterface
 
     /** Elimina el item; true si existía y se eliminó, false en caso contrario. */
     public function delete(int $id): bool;
+
+    /**
+     * Descuenta stock de forma atómica y "guardada": solo lo hace si el stock
+     * actual alcanza para la cantidad pedida. Devuelve true si se descontó,
+     * false si el item no existe o el stock no alcanza (sin modificar nada).
+     */
+    public function decrementStock(int $id, int $cantidad): bool;
 }

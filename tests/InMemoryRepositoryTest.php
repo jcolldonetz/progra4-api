@@ -8,6 +8,7 @@ use App\Models\Categoria;
 use App\Models\Item;
 use App\Repositories\InMemoryCategoriaRepository;
 use App\Repositories\InMemoryItemRepository;
+use App\Repositories\InMemoryPedidoRepository;
 use App\Repositories\InMemoryUserRepository;
 use PHPUnit\Framework\TestCase;
 
@@ -111,6 +112,19 @@ final class InMemoryRepositoryTest extends TestCase
         $this->assertCount(2, $repo->findAll());
     }
 
+    public function testItemDecrementStockDescuentaSoloSiAlcanza(): void
+    {
+        $repo = new InMemoryItemRepository();
+
+        $this->assertTrue($repo->decrementStock(1, 4));
+        $this->assertSame(8, $repo->findById(1)?->getStock());
+
+        $this->assertFalse($repo->decrementStock(1, 999));
+        $this->assertSame(8, $repo->findById(1)?->getStock());
+
+        $this->assertFalse($repo->decrementStock(999, 1));
+    }
+
     public function testUserAdminSembrado(): void
     {
         $repo = new InMemoryUserRepository();
@@ -148,5 +162,41 @@ final class InMemoryRepositoryTest extends TestCase
 
         $this->assertTrue($repo->delete(4));
         $this->assertFalse($repo->delete(4));
+    }
+
+    public function testPedidoPlaceOrderDescuentaStockYAsignaIdSecuencial(): void
+    {
+        $items = new InMemoryItemRepository();
+        $repo  = new InMemoryPedidoRepository($items);
+
+        $primero = $repo->placeOrder(1, 2, 'admin');
+        $segundo = $repo->placeOrder(2, 3, 'ana');
+
+        $this->assertNotNull($primero);
+        $this->assertNotNull($segundo);
+        $this->assertSame(1, $primero->getId());
+        $this->assertSame(2, $segundo->getId());
+        $this->assertSame(25.5 * 2, $primero->getTotal());
+        $this->assertSame('ana', $segundo->getUsername());
+        $this->assertSame(10, $items->findById(1)?->getStock());
+        $this->assertSame(27, $items->findById(2)?->getStock());
+        $this->assertCount(2, $repo->findAll());
+    }
+
+    public function testPedidoPlaceOrderInsuficienteDevuelveNull(): void
+    {
+        $items = new InMemoryItemRepository();
+        $repo  = new InMemoryPedidoRepository($items);
+
+        $this->assertNull($repo->placeOrder(3, 6, 'admin'));
+        $this->assertSame(5, $items->findById(3)?->getStock());
+        $this->assertSame([], $repo->findAll());
+    }
+
+    public function testPedidoPlaceOrderItemInexistenteDevuelveNull(): void
+    {
+        $items = new InMemoryItemRepository();
+
+        $this->assertNull((new InMemoryPedidoRepository($items))->placeOrder(999, 1, 'admin'));
     }
 }

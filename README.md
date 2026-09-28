@@ -1,9 +1,13 @@
-# API de Items — Ejemplo didáctico (Programación 4)
+# API de Items y Pedidos — Ejemplo didáctico (Programación 4)
 
 API REST en PHP puro (sin frameworks) con CRUD para las entidades **Item**
 (`id`, `nombre`, `precio`, `categoria_id`) y **Categoria** (`id`, `nombre`),
 relacionadas **1:N** (cada item pertenece a una categoría opcional). Incluye
-**autenticación por JWT** (`POST /login`).
+**autenticación por JWT** (`POST /login`) y el caso de uso **Pedido**:
+`POST /pedidos` descuenta stock de forma atómica y publica un **evento
+realtime** (Redis pub/sub) que el proyecto
+[`progra4-notifications`](../progra4-notifications) reparte por WebSocket a los
+demás clientes, que ven el stock bajar en vivo.
 Su objetivo es demostrar, de forma mínima y legible, la separación de
 responsabilidades en capas, el uso de interfaces para desacoplar el
 almacenamiento y las buenas prácticas básicas de seguridad.
@@ -23,6 +27,11 @@ almacenamiento y las buenas prácticas básicas de seguridad.
 | Autorización Bearer en el front controller | `public/index.php` (`requireBearerToken()`) |
 | HTTPS local con proxy TLS en PHP puro | `https-proxy.php`, `serve-https.cmd` |
 | CORS con lista blanca de orígenes (nunca `*`) | `public/index.php` (`CORS_ALLOWED_ORIGINS`) |
+| Caso de uso Pedido (descuento de stock + historial) | `PedidoService`, `PedidoController` |
+| Descuento atómico de stock + alta del pedido en una transacción | `SqlitePedidoRepository::placeOrder()` |
+| Interface de un evento de dominio (encapsula el *cómo*) | `EventPublisherInterface` |
+| Publicación realtime best-effort (Redis pub/sub) | `RedisEventPublisher` (canal `items.stock`) |
+| Sin Redis/Composer la API igual funciona (no publica) | `NullEventPublisher` |
 
 Cada capa tiene una única responsabilidad:
 
@@ -39,11 +48,23 @@ HTTP  ->  public/index.php        Front controller: ruteo, composición,
           ItemService             Lógica de negocio: validaciones y reglas
                                   (campos obligatorios, precio >= 0, nombre único).
           v
-          ItemRepositoryInterface Contrato de acceso a datos.
-          ^             ^
-          |             |
-   SqliteItemRepo  InMemoryItemRepo     Dos implementaciones intercambiables.
-   (archivo)       (:memory:)           El resto del código no cambia.
+ItemRepositoryInterface Contrato de acceso a datos.
+           ^             ^
+           |             |
+    SqliteItemRepo  InMemoryItemRepo     Dos implementaciones intercambiables.
+    (archivo)       (:memory:)           El resto del código no cambia.
+
+
+   [POST /pedidos]  PedidoController -> PedidoService -> PedidoRepositoryInterface
+                                   |                              ^
+                                   |  (valida, descuenta, crea)   |
+                                   v                        SqlitePedidoRepo /
+                                   EventPublisherInterface  InMemoryPedidoRepo
+                                    |    ^
+                                    |    |  RedisEventPublisher  -> Redis "items.stock"
+                                    |    |  NullEventPublisher    -> nadie escucha
+                                    v    |
+                                (best-effort: un fallo nunca rompe el 201)
 ```
 
 ## Estructura
@@ -52,6 +73,8 @@ HTTP  ->  public/index.php        Front controller: ruteo, composición,
 progra4_clase3/
 ├── public/index.php                  Front controller (rutas + auth + composición)
 ├── openapi.yaml                      Spec OpenAPI importable en Postman/Swagger
+├── composer.json                     Predis (publisher realtime) + autoload; PHPUnit (dev)
+├── .env.example                      Configuración del proyecto (template; copiar a .env)
 ├── seed_items.php                    Seeder de items de demostración (ver abajo)
 ├── https-proxy.php                   Proxy reverso TLS en PHP puro (levanta HTTPS)
 ├── serve-https.cmd                   Arranca la API en https://localhost:8443
@@ -59,11 +82,12 @@ progra4_clase3/
 ├── certs/                            Certificados generados por make-cert.cmd
 ├── data/items.sqlite                 BD SQLite (se crea sola al primer arranque)
 └── src/
-    ├── bootstrap.php                 Autoloader PSR-4 sin Composer
-    ├── Controllers/                  AuthController, ItemController
-    ├── Services/                     AuthService (login/JWT), ItemService (validadores)
+    ├── bootstrap.php                 Autoloader PSR-4 sin Composer (usa vendor/ si existe)
+    ├── Controllers/                  AuthController, ItemController, PedidoController
+    ├── Services/                     AuthService (login/JWT), ItemService, PedidoService
     ├── Repositories/                 Interfaces + implementaciones SQLite archivo/memoria
-    ├── Models/                       Item, User (el hash nunca sale en toArray())
+    ├── Models/                       Item, User, Pedido (el hash nunca sale en toArray())
+    ├── Realtime/                     EventPublisherInterface, RedisEventPublisher, NullEventPublisher
     ├── Security/JwtService.php       Emisión/verificación JWT HS256
     ├── Exceptions/                   ApiException base -> 401, 404, 422
     ├── Database/PdoFactory.php       Conexiones PDO uniformes
@@ -73,13 +97,19 @@ progra4_clase3/
 ## Requisitos
 
 - PHP >= 8.1 con la extensión `pdo_sqlite` (incluida por defecto en Windows).
+- **Composer** solo si se quiere lo opcional (la API funciona sin él):
+  - **publicar eventos realtime** (dependencia `predis/predis`), y
+  - correr los tests (PHPUnit).
+- **Redis** solo para realtime (canal `items.stock`). Sin `REDIS_URL` la API
+  usa un `NullEventPublisher` y cualquier endpoint sigue funcionando igual.
 
 ```powershell
 php -v                          # verificar versión
 php -m | Select-String sqlite   # verificar pdo_sqlite
+composer install                # opcional: predis + PHPUnit (ver "Tests unitarios")
 ```
 
-No se necesita Composer ni motor de BD instalado.
+No se necesita motor de BD instalado: SQLite es un archivo.
 
 ## Cómo iniciarlo
 
@@ -120,12 +150,33 @@ Variables de entorno opcionales:
 | `REPOSITORY_DRIVER` | `sqlite` \| `memory` | `sqlite` | Archivo persistente o BD en RAM |
 | `JWT_SECRET` | texto | solo desarrollo | Secreto de firma HMAC |
 | `JWT_TTL_SECONDS` | número | `3600` | Vigencia del token |
+| `REDIS_URL` | host:puerto | sin valor | Si se define, `POST /pedidos` publica el evento `items.stock` en Redis (realtime). Si no, no publica nada (`NullEventPublisher`) |
 | `CORS_ALLOWED_ORIGINS` | orígenes separados por comas | `http://localhost:5173,http://127.0.0.1:5173` | Lista blanca de orígenes para CORS (ver abajo) |
 
 ```powershell
 # Ejemplo: memoria + secreto propio
 $env:REPOSITORY_DRIVER='memory'; $env:JWT_SECRET='mi-secreto'; php -S localhost:8000 -t public
 ```
+
+#### Configuración con el archivo `.env`
+
+Esas mismas variables se pueden cargar desde un archivo **`.env`** en la raíz
+del proyecto (template en [`.env.example`](.env.example)). Copiarlo y editar:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Prioridad de lectura (igual que en cualquier carga de `.env`):
+
+```
+variable de la terminal  >  .env  >  default del código
+```
+
+Gracias a esa regla, `serve-https.cmd` (que define `REPOSITORY_DRIVER` en la
+terminal) y un `$env:REDIS_URL=...` de PowerShell siguen mandando por encima
+del archivo. El código que lee los valores no cambió: sigue usando `getenv()`
+(`bootstrap.php` publica el `.env` en el entorno al arrancar).
 
 ### Probar por HTTPS
 
@@ -136,6 +187,56 @@ $resp = curl.exe -s -k -X POST -H "Content-Type: application/json" `
 $token = ($resp | ConvertFrom-Json).token
 curl.exe -s -k -H "Authorization: Bearer $token" https://localhost:8443/items
 ```
+
+## Pedidos y stock en vivo (realtime)
+
+`POST /pedidos` es el caso de uso que conecta los tres proyectos:
+
+```
+progra4-web            progra4-api                    Redis              progra4-notifications
+.tab A "Pedir"  ──▶  POST /pedidos ──desc stock──▶   ──▶  items.stock
+.tab B ◀────── toast + stock en vivo ◀─ WebSocket ◀─────────────────── hub ◀─ bridge (suscribe)
+```
+
+Cadena completa para desarrollo (ver README de `progra4-notifications`):
+
+1. **Redis** corriendo en `127.0.0.1:6379` (en clase se usa el contenedor
+   `progra4-redis` de Docker; la API no depende de Docker).
+2. **Este proyecto** con `REDIS_URL` configurada para *publicar*:
+   ```powershell
+   $env:REDIS_URL='127.0.0.1:6379'
+   $env:JWT_SECRET='secreto-solo-para-desarrollo-cambiar'   # igual que en notificaciones
+   php -S localhost:8000 -t public
+   ```
+   > Requerido: ejecutar `composer install` una vez, porque el publisher usa
+   > `predis/predis`.
+3. **`progra4-notifications`** escuchando en `http://localhost:8081`
+   (`php bin/notif-server.php`): se suscribe al canal y difunde por WS.
+4. **`progra4-web`** con el proxy `/ws` de Vite apuntando a ese puerto.
+
+El evento que la API publica en el canal `items.stock`:
+
+```json
+{
+  "type": "pedido.creado",
+  "pedido": { "id": 5, "item_id": 1, "cantidad": 2, "total": 165.62, "username": "admin", "created_at": "…" },
+  "item": { "id": 1, "nombre": "…", "precio": 82.81, "stock": 84 },
+  "username": "admin"
+}
+```
+
+Notas de diseño:
+
+- **Best-effort**: la publicación se envuelve en `try/catch` y un fallo se
+  registra con `error_log` sin romper la respuesta `201`. La API **nunca**
+  depende de que Redis esté up.
+- **Degradación**: si no hay `REDIS_URL` —o Redis caído— se inyecta
+  `NullEventPublisher` y el flujo de pedidos funciona idéntico, solo que sin
+  avisar a otros clientes.
+- **`JWT_SECRET` compartido**: el server de notificaciones valida los mismos
+  tokens con el mismo secreto (`JwtVerifier`, HS256) que usa esta API.
+- Los eventos van al canal **`items.stock`** (constante
+  `PedidoService::STOCK_CHANNEL`).
 
 ## Acceso desde la red local (celular en la misma red WiFi)
 
@@ -277,6 +378,8 @@ php -S localhost:8000 -t public
 | POST | `/categorias` | Bearer JWT | 201 creada | 401, 422 |
 | PUT | `/categorias/{id}` | Bearer JWT | 200 actualizada | 401, 404, 422 |
 | DELETE | `/categorias/{id}` | Bearer JWT | 204 sin cuerpo | 401, 404, **422 si tiene items** |
+| GET | `/pedidos` | Bearer JWT | 200 historial de pedidos | 401 |
+| POST | `/pedidos` | Bearer JWT | 201 `{pedido, item, username}` (descuenta stock) | 401, 404, 422 |
 
 ## Cómo testearlo
 
@@ -322,6 +425,16 @@ curl.exe -X PUT -H "Authorization: Bearer $token" -H "Content-Type: application/
 
 # Eliminar -> 204
 curl.exe -X DELETE -H "Authorization: Bearer $token" http://localhost:8000/items/4
+
+# Crear un pedido -> 201 {pedido, item, username} (el stock baja en 1)
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
+     -d '{"item_id":1,"cantidad":1}' `
+     http://localhost:8000/pedidos
+
+# Stock insuficiente -> 422 con errors.stock
+curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" `
+     -d '{"item_id":1,"cantidad":99999}' `
+     http://localhost:8000/pedidos
 ```
 
 Sin token o con token inválido/expirado cualquier endpoint de items responde:
@@ -364,6 +477,16 @@ Autenticación:
 - `username` y `password` obligatorios (422 si faltan).
 - Credenciales incorrectas → 401 con mensaje genérico (no revela qué campo falló).
 
+Pedidos:
+- `item_id`: obligatorio, entero positivo. Si el item no existe → 404.
+- `cantidad`: obligatoria, entero positivo.
+- Stock insuficiente → 422 con `errors.stock` (no se crea el pedido).
+- El descuento de stock y el alta del pedido se hacen **en la misma
+  transacción** (compra atómica): si el stock no alcanza, nada se modifica.
+- `total` = `precio` del item × `cantidad` (lo calcula el repositorio al fechar
+  el pedido, no confía en un valor que venga del cliente).
+- El `username` del pedido sale del **JWT**, nunca del cuerpo de la petición.
+
 ## Tests unitarios
 
 La API usa **PHPUnit 12** (solo dependencia de desarrollo, vía Composer) para
@@ -386,10 +509,14 @@ Los tests viven en `tests/` con el namespace `App\Tests\` y la configuración en
   validaciones), acumulación de errores 422.
 - **ItemService**: CRUD completo, reglas de negocio (nombre único
   case-insensitive, precio >= 0, longitud máxima) y códigos 404/422.
-- **Controllers** (`ItemController`, `AuthController`): códigos HTTP (200/201/204),
-  datos de respuesta y traducción de excepciones.
+- **PedidoService**: validaciones (item_id/cantidad), item inexistente → 404,
+  stock insuficiente → 422 (con los errores por campo), y que el evento
+  realtime se publica con el payload `pedido.creado` (con un publisher spy).
+- **Controllers** (`ItemController`, `AuthController`, `PedidoController`):
+  códigos HTTP (200/201/204), datos de respuesta y traducción de excepciones.
 - **Modelos y repositorios en memoria**: serialización segura (sin
-  `password_hash` en `toArray()`) y contrato CRUD.
+  `password_hash` en `toArray()`), contrato CRUD, `decrementStock()` y
+  `placeOrder()`.
 
 ## Seguridad aplicada
 

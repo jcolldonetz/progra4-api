@@ -155,6 +155,16 @@ final class InMemoryItemRepository implements ItemRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    public function decrementStock(int $id, int $cantidad): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE items SET stock = stock - :cantidad WHERE id = :id AND stock >= :cantidad'
+        );
+        $stmt->execute([':cantidad' => $cantidad, ':id' => $id]);
+
+        return $stmt->rowCount() > 0;
+    }
+
     /** Items que cumplen los filtros opcionales (categoría y texto del nombre). */
     private function filterAll(?int $categoriaId, ?string $search): array
     {
